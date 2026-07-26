@@ -1,5 +1,5 @@
 /**
- * Browser smoke test.
+ * Browser smoke test — the field terminal.
  *
  * Walks the real client through the opening of the intended loop: sweep the
  * plaza, put the drone through the lobby glass to get radio reach on people you
@@ -9,8 +9,8 @@
  * The unit suite proves the simulation is right; this proves the thing you
  * actually click is wired to it.
  *
- *   npm run serve            # in one shell
- *   node scripts/smoke.mjs   # in another (needs playwright available)
+ *   npm run serve                     # in one shell
+ *   node scripts/smoke-terminal.mjs   # in another (needs playwright available)
  */
 
 import { existsSync } from "node:fs";
@@ -41,7 +41,8 @@ const check = (label, condition, detail = "") => {
   if (!condition) problems.push(`assertion failed: ${label}`);
 };
 
-await page.goto(`${BASE}/?seed=demo`, { waitUntil: "networkidle" });
+// The street client is the front door now; the terminal lives one click in.
+await page.goto(`${BASE}/terminal.html?seed=demo`, { waitUntil: "networkidle" });
 await page.waitForTimeout(700);
 
 check("boots with a clock and a contract", (await page.locator(".mission").count()) >= 1, await page.textContent("#clock-time"));
@@ -113,8 +114,8 @@ const feedAfter = await page.locator("#feed li").count();
 check("the city carries on without you", feedAfter > feedBefore, `${feedBefore} → ${feedAfter} feed entries`);
 console.log(`      clock ${await page.textContent("#clock-time")} · trace ${(await page.textContent("#trace-word"))?.trim()}`);
 
-await page.screenshot({ path: "docs/screenshot.png" });
-console.log("      screenshot -> docs/screenshot.png");
+await page.screenshot({ path: "docs/screenshot-terminal.png" });
+console.log("      screenshot -> docs/screenshot-terminal.png");
 
 if (problems.length > 0) {
   console.log("\nproblems:\n  " + problems.join("\n  "));

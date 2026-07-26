@@ -468,16 +468,8 @@ const app = new App();
 
 // Exposed for the browser smoke test and for poking at a live world from the
 // console. Everything here is already reachable through the UI; this is a
-// handle on the same objects, not a back door around the rules.
-declare global {
-  interface Window {
-    dednec: {
-      app: App;
-      state: () => GameState;
-      select: (kind: "place" | "npc" | "node", id: string) => void;
-    };
-  }
-}
+// handle on the same objects, not a back door around the rules. The shape is
+// declared once in `web/global.d.ts`, since both clients attach to it.
 window.dednec = {
   app,
   state: () => app.state,

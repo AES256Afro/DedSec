@@ -386,7 +386,11 @@ function wireRelationships(npcs: Map<NpcId, Npc>, rosters: Map<string, NpcId[]>,
         pair(person, other, "coworker", rng.float(0.35, 0.65));
       }
       if (managers.length > 0 && !managers.includes(person)) {
-        pair(rng.pick(managers), person, "manager", rng.float(0.5, 0.8));
+        // A relationship's `kind` names the *other* party's role — the dossier
+        // renders it as "manager · Ines Abara". Linking from the manager's side
+        // therefore reads exactly backwards, and did: every dossier in the game
+        // listed a target's boss as their report.
+        pair(person, rng.pick(managers), "manager", rng.float(0.5, 0.8));
       }
     }
     // A rivalry or two per org makes betrayal-shaped plays possible.
