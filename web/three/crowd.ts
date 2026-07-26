@@ -65,6 +65,16 @@ const COLOURS = {
   need: new THREE.Color(0xffc046),
 };
 
+/**
+ * The same lift the interiors carry.
+ *
+ * Every light belongs to the sky, so a person standing in a lobby is lit by
+ * nothing at all — a receptionist in a navy coat rendered as a black slab with
+ * a face on it. Outdoors this is swamped by the sun and does nothing; indoors
+ * it is the difference between a person and a hole in the room.
+ */
+const INDOOR_LIFT = 0x2b2926;
+
 function hash(id: string): number {
   let h = 0x811c9dc5;
   for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 0x01000193) >>> 0;
@@ -104,12 +114,12 @@ export class Crowd {
   constructor(scene: THREE.Scene) {
     this.bodies = new THREE.InstancedMesh(
       new THREE.BoxGeometry(0.44, BODY_HEIGHT, 0.28),
-      new THREE.MeshLambertMaterial({ vertexColors: false }),
+      new THREE.MeshLambertMaterial({ vertexColors: false, emissive: INDOOR_LIFT }),
       CAPACITY,
     );
     this.heads = new THREE.InstancedMesh(
       new THREE.SphereGeometry(HEAD_RADIUS, 10, 8),
-      new THREE.MeshLambertMaterial({ color: COLOURS.skin }),
+      new THREE.MeshLambertMaterial({ color: COLOURS.skin, emissive: INDOOR_LIFT }),
       CAPACITY,
     );
     this.markers = new THREE.InstancedMesh(
