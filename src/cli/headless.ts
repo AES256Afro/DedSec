@@ -26,7 +26,7 @@ const verbose = process.argv.includes("--verbose");
 
 const state = newGame({ seed });
 
-console.log(`\n  Dedsec headless — seed "${seed}"`);
+console.log(`\n  DedSec headless — seed "${seed}"`);
 console.log(`  ${state.city.graph.places.size} places · ${state.city.nodes.size} network nodes · ${state.npcs.size} people`);
 console.log(`  start ${formatDateTime(state.time)}, running ${minutes} world-minutes\n`);
 
