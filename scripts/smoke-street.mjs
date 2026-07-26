@@ -45,6 +45,25 @@ const check = (label, condition, detail = "") => {
   if (!condition) problems.push(`assertion failed: ${label}`);
 };
 
+/**
+ * Wait for the page to agree, rather than for the clock.
+ *
+ * Everything here is driven per animation frame, and software WebGL renders
+ * this scene at a few frames a second. A fixed wait that is generous on a GPU
+ * is one or two frames in CI, which is how the first versions of half these
+ * assertions failed against a client that was working perfectly.
+ */
+async function until(fn, ms = 6000) {
+  const deadline = Date.now() + ms;
+  let last;
+  while (Date.now() < deadline) {
+    last = await page.evaluate(fn);
+    if (last) return last;
+    await page.waitForTimeout(200);
+  }
+  return last;
+}
+
 await page.goto(`${BASE}/?seed=demo`, { waitUntil: "networkidle" });
 await page.waitForTimeout(1200);
 
@@ -109,40 +128,30 @@ check("the ledger counts what the walk turned up", after.ledger === after.scanne
 
 /* --- 4. cards land on screen --------------------------------------------- */
 
-// Where the free walk above ends up is not deterministic enough to assert on,
-// so stand somewhere there provably *is* somebody and look straight at them.
-const stood = await page.evaluate(() => {
-  const state = window.dedsec.state();
-  const graph = state.city.graph;
-  const counts = new Map();
-  for (const person of state.npcs.values()) {
-    const place = graph.places.get(person.placeId);
-    if (!place || place.indoor) continue;
-    counts.set(place.id, (counts.get(place.id) ?? 0) + 1);
-  }
-  const [busiest] = [...counts.entries()].sort((a, b) => b[1] - a[1]);
-  if (!busiest) return null;
-  const place = graph.place(busiest[0]);
-  window.dedsec.goTo(place.x - 17, place.y, place.x, place.y);
-  return { name: place.name, people: busiest[1] };
-});
-check("there is somewhere with people standing in it", stood !== null, stood ? `${stood.people} in ${stood.name}` : "nobody outdoors");
-await page.waitForTimeout(900);
+// The card only exists for whoever is under the crosshair, so the test has to
+// actually aim: stand a few metres from somebody outdoors and look at them.
+const aimed = await page.evaluate(() => window.dedsec.aimAtSomebody());
+check("there is somebody outdoors to aim at", aimed !== null, aimed ?? "nobody outdoors");
 
-const overlay = await page.evaluate(() => window.dedsec.stats());
+const opened = await until(() => (window.dedsec.stats().cards === 1 ? window.dedsec.stats() : null));
 check(
-  "ctOS cards project over people",
-  overlay.cards > 0,
-  `${overlay.cards} card(s) up · ${overlay.profiled} in ctOS range, ${overlay.optical} of them in sight`,
+  "aiming at somebody opens their card",
+  Boolean(opened),
+  opened
+    ? `${opened.cards} card up · ${opened.profiled} in ctOS range, ${opened.optical} of them in sight`
+    : "no card appeared",
 );
 
 const named = await page.evaluate(() => {
-  const el = [...document.querySelectorAll(".ctos-card:not([hidden]) .ctos-name")].find(
-    (n) => !n.classList.contains("is-unknown"),
-  );
-  return el ? el.textContent : null;
+  const el = document.querySelector(".ctos-card:not([hidden]) .ctos-name");
+  return el && !el.classList.contains("is-unknown") ? el.textContent : null;
 });
-check("at least one card has resolved to a name", Boolean(named), named ?? "all still scanning");
+check("the card resolves to a name", Boolean(named), named ?? "still reading");
+
+// And nothing at all when you look away — the whole point of the change.
+await page.evaluate(() => window.dedsec.goTo(60, 60, 1600, 1200));
+const closed = await until(() => window.dedsec.stats().cards === 0);
+check("looking away closes it", closed === true, closed ? "" : "a card stayed up");
 
 /* --- 5. you can walk indoors --------------------------------------------- */
 

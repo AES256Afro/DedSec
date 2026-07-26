@@ -361,6 +361,41 @@ metres, and every few metres the client asks which outdoor place they are
 nearest and hands that answer back. Line of sight, radio range, who is standing
 next to you: all of it keeps working untouched.
 
+### One card, over whoever you are looking at
+
+The first version put a card over everybody ctOS could read — up to nine at
+once — on the grounds that the city genuinely does know all of it.
+
+That was true and still wrong. Information the game is *always* showing you is
+wallpaper; nobody reads nine cards at once; and there was nothing you could do
+with any of them without first pressing a key to open something else. The
+profiler had become scenery.
+
+So the crowd is anonymous until you aim at it. Put the crosshair on somebody and
+the readout resolves, with what you can do about them attached to it — read
+their phone, and whatever their case is offering, on the number keys. The card
+*is* the interface, so the keys belong to the card: what `2` does depends
+entirely on who you are looking at.
+
+The only thing the unaimed-at crowd carries is a marker over the people the
+caseload has something on. That is what keeps them findable across a plaza
+without sweeping the pavement person by person, and it is the minimum that
+still supports "walk until something catches your eye".
+
+**People wear clothes, not status.** Painting each figure in its flag colour
+turned a pavement into a row of traffic cones. Bodies are now muted clothing
+tones drawn deterministically from the person's id; the flag lives on the
+marker, and the one tint that remains is the teal on your current target — which
+is not information about them, it is the client confirming which of six people
+on a plaza the card belongs to.
+
+**A bug this found.** The camera's eye is at 1.68 m and the figures topped out
+around 1.6 m, with heads excluded from picking as "decoration". Aiming
+horizontally at somebody therefore hit *nothing*. Nobody had noticed because
+cards did not depend on aim. Figures are 1.75 m now and heads are pickable — a
+head is the part of a person at eye level, which makes it most of the times you
+were actually aiming at them.
+
 ### The cards stay DOM
 
 Watch Dogs draws them the same way and for the same reason. Text in a 3D scene
