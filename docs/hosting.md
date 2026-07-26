@@ -37,7 +37,25 @@ So the workflow checks instead. If Pages is off, the build still succeeds — th
 code is fine — and the run summary spells out this setting. Only genuine
 breakage turns the workflow red, which keeps the signal worth reading.
 
-**2. Point DNS at Pages.** At whatever hosts DNS for `whatiwatched.com`, add:
+**2. Make `main` the default branch.** Settings → General → *Default branch*.
+
+This one is not obvious, and it fails in a way that gives you nothing to go on.
+The `github-pages` environment ships with a protection rule that only allows
+deployments from the **default branch**. This repository was created with the
+feature branch as its initial branch and `main` added afterwards, so `main` was
+not the default — and a Deploy run from it produced a `deploy` job that failed in
+one second having executed *zero steps*, with no log to download. A job that dies
+before "Set up job" has been rejected by an environment rule, not by anything in
+the workflow.
+
+Symptom to recognise:
+
+```
+build   ✓ success   (tests, site build, artifact uploaded)
+deploy  ✗ failure   1s, no steps, no logs
+```
+
+**3. Point DNS at Pages.** At whatever hosts DNS for `whatiwatched.com`, add:
 
 | Type  | Name     | Value                    |
 | ----- | -------- | ------------------------ |
@@ -53,6 +71,24 @@ Verify with:
 dig +short dedsek.whatiwatched.com
 curl -sI https://dedsek.whatiwatched.com | head -1
 ```
+
+### The custom domain hides the github.io URL
+
+Worth knowing before you go looking for the site: once a custom domain is
+configured, Pages **redirects** `aes256afro.github.io/DedNec` to it. Because the
+build writes `site/CNAME`, that happens from the very first successful deploy —
+so between publishing and DNS resolving there is no working URL at all. The
+deploy succeeded; the redirect target just does not exist yet.
+
+If you want to look at the build before sorting out DNS, delete the `CNAME`
+write from `scripts/build-site.mjs` (or clear `CUSTOM_DOMAIN`) and redeploy. The
+site then serves from `aes256afro.github.io/DedNec` — the page uses relative
+asset paths, so it works under a subpath without changes.
+
+Do not instead clear the *Settings* field while leaving `CNAME` in the artifact,
+or set the field while the artifact lacks it: whichever ran last wins, and the
+two disagreeing is the usual cause of a custom domain that mysteriously unsets
+itself on the next deploy.
 
 ## Anywhere else
 
