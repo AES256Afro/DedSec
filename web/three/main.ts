@@ -259,10 +259,14 @@ class Street {
     optical: number;
     at: [number, number];
     floor: number;
+    focus: string | null;
   } {
     return {
       at: [this.player.camera.position.x, this.player.camera.position.z],
       floor: this.player.floor(),
+      // Who the crosshair is on. A card that will not go away is only
+      // diagnosable if you can ask what it is a card *for*.
+      focus: this.focusId ? (this.state.npcs.get(this.focusId)?.name ?? this.focusId) : null,
       triangles: this.renderer.info.render.triangles,
       calls: this.renderer.info.render.calls,
       cards: this.el.cards.querySelectorAll(".ctos-card:not([hidden])").length,
