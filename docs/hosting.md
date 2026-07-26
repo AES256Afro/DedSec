@@ -15,15 +15,29 @@ npx serve site          # or python3 -m http.server, or drag it anywhere
 `main`, gated behind the test suite so a broken world never reaches the domain.
 `site/CNAME` is written with the custom domain during the build.
 
-The workflow passes `enablement: true` to `actions/configure-pages`, so it turns
-Pages on for the repository itself on the first successful run rather than
-failing and asking someone to click through Settings. If that is blocked by an
-org policy, do it by hand: Settings → Pages → *Build and deployment* → Source:
+Two steps have to happen by hand, once. Neither can be automated, and it is
+worth knowing exactly why.
+
+**1. Turn Pages on.** Settings → Pages → *Build and deployment* → Source:
 **GitHub Actions**.
 
-**One step has to happen outside this repository, and only whoever controls the
-domain can do it — point DNS at Pages.** At whatever hosts DNS for
-`whatiwatched.com`, add:
+The workflow declares `pages: write`, which is enough to *publish to* a Pages
+site — but not to *create* one. Creating it is an admin operation, and asking
+for it from a workflow token fails with:
+
+```
+Create Pages site failed. Error: Resource not accessible by integration
+```
+
+`actions/configure-pages` advertises an `enablement: true` parameter that sounds
+like it solves this. It does not, for the same reason: it calls the same
+create-site endpoint with the same token. Do not bother trying it.
+
+So the workflow checks instead. If Pages is off, the build still succeeds — the
+code is fine — and the run summary spells out this setting. Only genuine
+breakage turns the workflow red, which keeps the signal worth reading.
+
+**2. Point DNS at Pages.** At whatever hosts DNS for `whatiwatched.com`, add:
 
 | Type  | Name     | Value                    |
 | ----- | -------- | ------------------------ |
