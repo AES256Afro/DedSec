@@ -240,6 +240,52 @@ The first run found two things, both invisible from the code:
 Neither was a bug in the sense a test could assert. Both were the difference
 between a systemic game and an opaque one.
 
+## A shipped contract nobody could finish
+
+Three of the four contracts had never been driven to completion by anything.
+`heist.test.ts` proved Specimen A7 worked; the rest were assumed.
+
+**Back Room was impossible.** Its target room sits behind a `mechanical` door,
+which by design has no lock to hack and gets no network node. `playerCanPass`
+returns false for mechanical unconditionally, and the one override — `failOpen`,
+via the fire alarm — needs a PA, sprinkler or HVAC node. The Paper Lantern has
+none of the three. No sequence of verbs could get a player into that room.
+
+What made it worse is that the mission text described a mechanic that did not
+exist: *"you get in by arranging for the person with the key to be somewhere
+else."* There was no person with a key, and no way to exploit them if there had
+been. So the fix was to build the described mechanic rather than weaken the door:
+
+- **Nobody re-locks behind themselves.** Walking through a mechanical door leaves
+  it unlocked for a while. That is the only way through one, which makes
+  "arrange for the keyholder to be elsewhere" a real play instead of flavour.
+- **Somebody has to actually use the room.** A door nobody opens is a wall. The
+  Lantern got a `venue_manager` — a bar does not run on the 08:30 `manager`
+  archetype's office hours, and staffing it that way left the back office empty
+  every evening the venue was alive.
+- **The window is 25 minutes, not 4.** The first tuning was unplayable for a
+  reason worth recording: the only person who opens that door is the manager,
+  and she is still crossing the bar on her way out when a 4-minute window shuts.
+  The contract asks for two manipulations to overlap; the window has to be long
+  enough that they can.
+
+The resulting play is the one the brief always described. Lure the manager out
+with something her own dossier unlocked, and she leaves the door open behind
+her; have the bar already cleared; walk in before it swings shut.
+
+Completability is now an invariant with a test behind it — `contracts.test.ts`
+plays every contract on the board to completion, and asserts that no room a
+mission names sits behind a mechanical door with nobody rostered to work there.
+
+### A note on how the bot plays
+
+The first version of that test hammered the same person with a fresh lure every
+tick — sixty phishing attempts an hour — and drove their suspicion to 0.95. That
+is not the game being unfair; it is the suspicion model working exactly as
+designed and the test playing badly. It now waits between attempts, presses
+harder only while the gap is actually open, and never pushes someone already
+past 0.35. Which is, usefully, also the advice a player needs.
+
 ## Deliberate omissions
 
 No save/load, no audio, no skill tree beyond a single stub, no mobile layout. The
