@@ -97,6 +97,15 @@ export interface Door {
   jammedUntil?: number;
   /** True while a fire event has released the mag-locks. */
   failOpen: boolean;
+  /**
+   * When a mechanical door someone left open swings back to locked.
+   *
+   * People do not re-lock behind themselves. A mechanical door has no lock to
+   * hack and no node to breach, so the *only* way through one is the gap
+   * somebody else leaves — which is exactly the play the Back Room contract
+   * asks for, and which did not exist until this field did.
+   */
+  relockAt?: number;
 }
 
 export interface Building {

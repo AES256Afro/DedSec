@@ -161,6 +161,30 @@ export const ARCHETYPES: Archetype[] = [
     frequency: 2,
   },
   {
+    // A bar does not run on office hours. Staffing a late-opening venue with
+    // the 08:30 `manager` archetype leaves its back office empty every evening
+    // the place is actually alive — which, on a mechanical door, means nobody
+    // ever opens it and the room may as well not exist.
+    id: "venue_manager",
+    title: "Venue Manager",
+    workPlaceKinds: ["office"],
+    orgKinds: ["hospitality"],
+    clearance: "restricted",
+    income: [42000, 72000],
+    traitBias: { diligence: 0.5, vanity: 0.6, greed: 0.6, sociability: 0.65, anxiety: 0.5 },
+    shift: [H(19), H(3)],
+    post: false,
+    patrols: false,
+    secretBias: { embezzlement: 3.2, gambling: 2.4, affair: 2.0, debt: 1.8 },
+    quirks: [
+      "Counts the till three times and still does not trust the number",
+      "Has barred the same regular four times and readmitted them four times",
+      "Keeps a second set of books that balances differently",
+    ],
+    authority: 0.75,
+    frequency: 1,
+  },
+  {
     id: "exec",
     title: "Executive",
     workPlaceKinds: ["office", "meeting"],

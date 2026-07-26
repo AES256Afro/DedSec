@@ -241,8 +241,13 @@ export const BUILDINGS: BuildingSpec[] = [
     securityPosture: 0.25,
     entranceStreetKey: "s_marina_w",
     entranceLock: "none",
+    // The manager works out of the back office, which is what makes that room
+    // enterable at all: they go in and out and leave a mechanical door open
+    // behind them. Without somebody rostered to that room there is no gap, and
+    // the Back Room contract has no solution.
     staffing: [
       { archetypeId: "bartender", count: 2 },
+      { archetypeId: "venue_manager", count: 1 },
       { archetypeId: "guard", count: 1 },
     ],
     floors: [
