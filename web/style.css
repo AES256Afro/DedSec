@@ -278,3 +278,13 @@ button.is-active { border-color: var(--accent); color: var(--accent); }
   max-width: 60ch;
 }
 .toast.bad { border-color: var(--bad); }
+
+/* Back to the street client. The terminal is the instrumented view of the same
+   city; the front door is the one you walk around in. */
+.sub-link {
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 11px;
+  margin-left: 6px;
+}
+.sub-link:hover { text-decoration: underline; }

@@ -14,6 +14,7 @@
  * access to is the intended play, not an exploit.
  */
 
+import type { Npc } from "../npc/types.js";
 import type { GameState } from "../sim/state.js";
 import type { NetworkNode, NodeId } from "../world/types.js";
 
@@ -22,6 +23,42 @@ import type { NetworkNode, NodeId } from "../world/types.js";
  * point a lens at", not radio range — breaching uses `PlayerState.hackRange`.
  */
 export const SCAN_RANGE = 200;
+
+/**
+ * Floors are not walls. A person one storey up is a few metres away and a
+ * whole building's worth of concrete away, and the profiler splits the
+ * difference: enough of a penalty that you profile the street before the
+ * offices above it, not so much that a first-floor café is invisible.
+ */
+const FLOOR_COST = 14;
+
+/**
+ * Everyone ctOS will surface a layer-0 card for.
+ *
+ * Deliberately *not* line of sight. `visibleNpcs` answers "who can you see",
+ * which is the right question for anything involving a lens or a witness. This
+ * answers a different one: who is close enough that the city's own network —
+ * their handset, the shop's camera, the fare reader they tapped — has already
+ * told you their name. That is the premise of the whole ctOS fantasy, and it is
+ * why a street reads as populated when two-thirds of the population is indoors.
+ *
+ * It only ever grants layer 0: a name, a job, an income and a quirk, all of
+ * which are public records. Every layer above it still costs a breach, and
+ * every verb still needs real reach.
+ */
+export function profilableNpcs(state: GameState, range = SCAN_RANGE): Npc[] {
+  const here = state.city.graph.places.get(state.player.placeId);
+  if (!here) return [];
+  const out: Npc[] = [];
+  for (const person of state.npcs.values()) {
+    const place = state.city.graph.places.get(person.placeId);
+    if (!place) continue;
+    const distance =
+      Math.hypot(place.x - here.x, place.y - here.y) + Math.abs(place.floor - here.floor) * FLOOR_COST;
+    if (distance <= range) out.push(person);
+  }
+  return out;
+}
 
 export interface ReachSource {
   kind: "handset" | "drone" | "relay" | "subnet";

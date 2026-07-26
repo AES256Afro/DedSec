@@ -6,6 +6,7 @@
  * makes any state reachable from a test without standing up a renderer.
  */
 
+import type { CaseRecord, Ledger } from "../case/types.js";
 import type { EventLog } from "../core/events.js";
 import type { Rng } from "../core/rng.js";
 import type { Instant } from "../core/time.js";
@@ -128,6 +129,9 @@ export interface GameState {
   schedule: ScheduledTask[];
   /** Mission runtimes, kept opaque here to avoid a circular import. */
   missions: unknown[];
+  /** The casual loop: paired harm/need situations noticed by walking about. */
+  cases: CaseRecord[];
+  ledger: Ledger;
   /** Monotonic id source for anything created at runtime. */
   counter: number;
 }

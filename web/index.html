@@ -3,83 +3,66 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>DedNec — ctOS</title>
-    <!-- Absolute paths: the server maps "/" to this file, so relative URLs
-         would resolve against the root rather than against /web/. -->
-    <link rel="stylesheet" href="/web/style.css" />
+    <title>DedNec — the street</title>
+    <!-- Absolute paths: the dev server maps "/" to this file, so relative URLs
+         would resolve against the root rather than against /web/. The site build
+         rewrites all three of these. -->
+    <link rel="stylesheet" href="/web/street.css" />
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ctext y='13' font-size='13' fill='%2335e0c8'%3E%E2%96%9A%3C/text%3E%3C/svg%3E" />
+    <!-- three ships as an ES module with a bare specifier in its own internals.
+         An import map is the whole build step: no bundler, no transform, and the
+         same compiled output runs from the repo and from a static host. -->
+    <script type="importmap">
+      { "imports": { "three": "/node_modules/three/build/three.module.js" } }
+    </script>
   </head>
   <body>
-    <header class="topbar">
-      <div class="brand">
-        <span class="mark">▚</span>
-        <span class="wordmark">DedNec</span>
-        <span class="sub">ctOS field terminal</span>
+    <canvas id="scene"></canvas>
+
+    <!-- Cards live above the canvas and never take the pointer: clicking a face
+         has to reach the canvas so pointer lock re-engages. -->
+    <div id="cards" class="cards"></div>
+
+    <div class="crosshair" aria-hidden="true"></div>
+
+    <div class="hud">
+      <div class="hud-top">
+        <span class="brand"><span class="mark">▚</span> DedNec</span>
+        <span id="hud-clock" class="hud-clock">09:20 · day 1</span>
       </div>
-
-      <div class="clock">
-        <span id="clock-time">08:10</span>
-        <span id="clock-day" class="muted">Day 1</span>
+      <div class="hud-bottom">
+        <span id="hud-ledger" class="hud-ledger">0 profiled</span>
+        <span id="hud-prompt" class="hud-prompt" hidden></span>
       </div>
+    </div>
 
-      <div class="speed" role="group" aria-label="Simulation speed">
-        <button data-speed="0" class="speed-btn">❚❚</button>
-        <button data-speed="1" class="speed-btn is-active">1×</button>
-        <button data-speed="4" class="speed-btn">4×</button>
-        <button data-speed="16" class="speed-btn">16×</button>
-      </div>
+    <aside id="panel" class="panel" hidden>
+      <button class="panel-close" data-close aria-label="Close">✕</button>
+      <div id="panel-body" class="panel-body"></div>
+    </aside>
 
-      <div class="trace">
-        <label>ctOS trace <span id="trace-word" class="muted">quiet</span></label>
-        <div class="meter"><div id="trace-fill" class="meter-fill"></div></div>
-      </div>
-
-      <div class="topbar-actions">
-        <button id="btn-drone" class="ghost">Deploy drone</button>
-        <label class="floor">
-          Floor
-          <select id="floor-select"></select>
-        </label>
-      </div>
-    </header>
-
-    <main class="layout">
-      <aside class="col col-left">
-        <section class="panel" id="panel-missions">
-          <h2>Contracts</h2>
-          <div id="mission-list" class="scroll"></div>
-        </section>
-        <section class="panel grow" id="panel-feed">
-          <h2>
-            Feed
-            <span class="filters" id="feed-filters"></span>
-          </h2>
-          <ul id="feed" class="scroll feed"></ul>
-        </section>
-      </aside>
-
-      <section class="col col-map">
-        <canvas id="map"></canvas>
-        <div class="map-legend" id="map-legend"></div>
-        <div class="map-hint" id="map-hint">
-          Click to inspect · double-click the ground to walk · drag to pan · scroll to zoom ·
-          <b>S</b> sweep profiles · <b>D</b> drone · <b>[ ]</b> floors · <b>space</b> pause
-        </div>
-      </section>
-
-      <aside class="col col-right">
-        <section class="panel" id="panel-inspector">
-          <h2 id="inspector-title">Nothing selected</h2>
-          <div id="inspector" class="scroll"></div>
-        </section>
-        <section class="panel" id="panel-network">
-          <h2>In reach <span id="reach-count" class="muted"></span></h2>
-          <div id="network" class="scroll"></div>
-        </section>
-      </aside>
-    </main>
+    <div id="hint" class="hint">
+      <h1>ctOS is already running.</h1>
+      <p>
+        Click to look around. <b>W A S D</b> to walk, <b>shift</b> to jog. Everyone
+        you can see gets profiled whether you ask or not — that is what ctOS is.
+      </p>
+      <p>
+        A <span class="dot is-need"></span> over someone means the city is doing
+        something to them. A <span class="dot is-harm"></span> means they are the
+        one doing it. Read a phone with <b>F</b> to find out which.
+      </p>
+      <p>
+        <b>E</b> stops and looks properly. <b>Esc</b> steps back out.
+        Nothing here can be failed, and walking away is a real answer.
+      </p>
+      <p class="hint-foot">
+        <b>H</b> hides this · <a href="./terminal.html">the field terminal</a> is
+        the same city with every instrument switched on
+      </p>
+    </div>
 
     <div id="toast" class="toast" hidden></div>
-    <script type="module" src="/dist/web/main.js"></script>
+    <script type="module" src="/dist/web/three/main.js"></script>
   </body>
 </html>

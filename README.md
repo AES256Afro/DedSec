@@ -2,22 +2,26 @@
 
 [![CI](https://github.com/AES256Afro/DedNec/actions/workflows/ci.yml/badge.svg)](https://github.com/AES256Afro/DedNec/actions/workflows/ci.yml)
 
-A systemic social-engineering sandbox: ctOS-style profiling, hacking and human
-manipulation, with combat removed entirely.
+A city you walk around at night while ctOS reads everybody in it. No combat, no
+fail state, no timer. Profile cards pop over people as you pass them, most of
+them are just texture, and some of them are not.
 
-You are not a combatant. You have a handset, a drone, and other people's lives.
-Every problem in the game is a person who is standing where you need to be, and
-the only way to move them is to learn enough about them to make them want to
-leave.
+Two clients, one simulation:
 
-![The ctOS field terminal](docs/screenshot.png)
+- **the street** — first person, 3D, the ctOS overlay and the casual loop. This
+  is the front door.
+- **the field terminal** — the same city top-down with every instrument switched
+  on: contracts, the verb list, the trace meter, the network view.
+
+![The street at night, with ctOS cards over four people and one of them flagged](docs/screenshot.png)
 
 ## Run it
 
 ```bash
 npm install
-npm test           # 71 tests over the simulation core
-npm run serve      # then open http://localhost:5173/
+npm test           # 91 tests over the simulation core
+npm run serve      # then open http://localhost:5173/ (street)
+                   #      or http://localhost:5173/web/terminal.html
 npm run sim        # headless: watch the city run with no player in it
 npm run build:site # static bundle in site/ — any host will serve it
 ```
@@ -28,12 +32,44 @@ state lives in the tab and is regenerated from the seed.
 
 Deployment (GitHub Pages, custom domain, DNS): [`docs/hosting.md`](docs/hosting.md).
 
-## The loop
+## The street
+
+**Walk → a card pops → do something about it, or do not.**
+
+Everyone within ctOS range gets a layer-0 card without your asking: name, job,
+income, one flagged quirk. That is the premise of the fantasy taken literally,
+and it is why the profiler reads handsets rather than faces — two-thirds of a
+city is indoors during office hours, and a street where you can only profile
+what you can see is a street with nobody on it. People behind a wall get a
+dashed card; people you can actually see get a solid one.
+
+Some cards carry a flag, and flags come in pairs:
+
+- 🔴 **flagged** — this person is doing something to someone;
+- 🟡 **at risk** — this person is the one it is being done to.
+
+The pairing is the design. A lone bad person is a label; a bad person attached
+to somebody they are hurting is a situation. Read either party's phone and the
+case opens: what it actually is, who is on the other end, and three or four
+small things you could do — settle the arrears, route the ledger to the
+licensing board, forward the tenancy clause, or keep walking. Every one of them
+works. There is nothing to fail.
+
+Progress is a ledger, not a score: **7 helped · 2 exposed · 61 profiled**. No
+denominator, no completion percentage, nothing to clear.
+
+Cases are read out of the city rather than sprinkled on it. Every one needs a
+configuration the population generator already produced — somebody with a
+gambling secret, a manager who already has a report, an org with somebody
+skimming it — and the predatory relationship is written into the actual social
+graph, so the dossier lists it and every existing verb can act on it.
+
+## The deeper loop
 
 **Observe → Profile → Manipulate → Infiltrate.**
 
-1. **Observe.** Passive scans name everyone in line of sight. Cameras and the
-   drone extend that to places you cannot stand.
+1. **Observe.** ctOS names everyone in range. Cameras and the drone extend that
+   to places you cannot stand.
 2. **Profile.** Four layers, each earned rather than bought:
    - **L0** name, job, income, and one flagged quirk — free, from sight alone.
    - **L1** their handset: contacts, calendar, interests, pattern of life.
@@ -146,15 +182,25 @@ src/
   hack/      network reach, breaching, the verb registry, trace/suspicion/forensics
   sim/       game state, player actions, dispatch, the tick
   mission/   objective runtime and the contract board
+  case/      the casual loop: paired harm/need cases and the ledger
   cli/       headless runner
-web/         canvas renderer and ctOS terminal UI
-test/        67 tests, including a full scripted playthrough of the heist
+web/
+  three/     the street client — city extrusion, walking, crowd, ctOS cards
+  render/    the field terminal's canvas map
+  ui/        the field terminal's panels
+test/        91 tests, including full scripted playthroughs of every contract
 ```
 
-Zero runtime dependencies. TypeScript compiled with `tsc` straight to ES modules
-the browser loads directly — no bundler.
+One runtime dependency: three.js, loaded through an import map and vendored into
+the build. Everything else is TypeScript compiled with `tsc` straight to ES
+modules the browser loads directly — no bundler, no framework, no build server.
 
-### Controls
+### Controls — the street
+
+**W A S D** walk · **shift** jog · mouse look · **E** stop and look properly ·
+**F** read the nearest device they own · **Esc** step back out · **H** hints.
+
+### Controls — the field terminal
 
 Click to inspect · double-click the ground to walk · drag to pan · scroll to zoom
 · **S** sweep profiles · **D** drone · **[** **]** floors · **space** pause.
@@ -171,6 +217,7 @@ Longer write-up of the systems and the reasoning behind them:
 
 The scope here is the simulation and the sandbox, not a shipped product. Missing:
 save/load, audio, a skill tree beyond the single `deep_crawler` stub, controller
-input, and a mobile layout. The four contracts on the board are a vertical slice —
+input, and a mobile layout. The street client is outdoors only — buildings are
+solid, and going inside is still the field terminal's job. The four contracts on the board are a vertical slice —
 `src/mission/missions/index.ts` is where more go, and the objective format means
 they are written as world-state predicates rather than scripted beats.

@@ -43,6 +43,8 @@ jobs:
       # reaped between steps.
       - run: npm run build:site
       - name: smoke test the built site
+        # Both clients, against the published artefact: the street (three.js
+        # through the import map, WebGL under SwiftShader) and the terminal.
         env:
           BASE_URL: http://localhost:5174
         run: |
@@ -51,4 +53,4 @@ jobs:
             curl -sf http://localhost:5174 >/dev/null && break
             sleep 1
           done
-          node scripts/smoke.mjs
+          npm run smoke
