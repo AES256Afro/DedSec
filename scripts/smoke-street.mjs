@@ -149,9 +149,37 @@ const named = await page.evaluate(() => {
 check("the card resolves to a name", Boolean(named), named ?? "still reading");
 
 // And nothing at all when you look away — the whole point of the change.
-await page.evaluate(() => window.dedsec.goTo(60, 60, 1600, 1200));
-const closed = await until(() => window.dedsec.stats().cards === 0);
-check("looking away closes it", closed === true, closed ? "" : "a card stayed up");
+//
+// The card is up exactly while somebody is under the crosshair, so this is
+// really asserting "crosshair on nobody, therefore no card". The first version
+// stood in the north-west corner and looked at the far corner of the map,
+// which quietly made it assert something else: that one particular sightline —
+// the longest one there is — happened to be empty. With a hundred and ninety
+// people walking around on their own schedules that is a bet the test
+// eventually loses, and in CI it did.
+//
+// So look out of the city from four different angles and require that one of
+// them clears. Any one empty sightline proves the rule; needing a *specific*
+// one to be empty proves nothing except that nobody was standing there.
+const vantages = [
+  [-1200, -1200],
+  [-1200, 1600],
+  [1600, -1200],
+  [-1200, 60],
+];
+let closed = false;
+let lingering = null;
+for (const look of vantages) {
+  await page.evaluate((l) => window.dedsec.goTo(60, 60, l[0], l[1]), look);
+  closed = (await until(() => (window.dedsec.stats().cards === 0 ? true : null), 3000)) === true;
+  if (closed) break;
+  lingering = await page.evaluate(() => window.dedsec.stats().focus);
+}
+check(
+  "looking away closes it",
+  closed,
+  closed ? "" : `a card stayed up${lingering ? ` for ${lingering}` : ""}`,
+);
 
 /* --- 5. you can walk indoors --------------------------------------------- */
 

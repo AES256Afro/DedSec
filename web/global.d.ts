@@ -44,6 +44,8 @@ declare global {
         optical: number;
         at: [number, number];
         floor: number;
+        /** Who the crosshair is on, for diagnosing a card that will not close. */
+        focus: string | null;
       };
     };
   }
