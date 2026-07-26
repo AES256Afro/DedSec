@@ -1,0 +1,54 @@
+name: CI
+
+# The deploy workflow only runs on main, which left pull requests with no
+# checks at all. This is the gate that actually reviews a change.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  simulation:
+    name: typecheck and simulation suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
+
+  client:
+    name: browser smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+
+      # Serve the *built* site rather than the dev server, so CI exercises
+      # exactly the artefact that gets published. Server start, readiness wait
+      # and the test share one shell so the background process cannot be
+      # reaped between steps.
+      - run: npm run build:site
+      - name: smoke test the built site
+        env:
+          BASE_URL: http://localhost:5174
+        run: |
+          node scripts/serve.mjs site &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:5174 >/dev/null && break
+            sleep 1
+          done
+          node scripts/smoke.mjs
