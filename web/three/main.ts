@@ -36,7 +36,7 @@ import { renderProfilePanel } from "./panel.js";
 import { PlayerController } from "./player.js";
 import { Sky } from "./sky.js";
 import { buildCity, nearestOutdoorPlace } from "./world.js";
-import type { LitSurface } from "./world.js";
+import type { Interior, LitSurface } from "./world.js";
 
 /** Wall-clock milliseconds per world-minute. Slow: this is a walk, not a shift. */
 const MS_PER_MINUTE = 1400;
@@ -55,6 +55,7 @@ class Street {
   private labels: LabelLayer;
   private sky: Sky;
   private lit: LitSurface[];
+  private interiors: Interior[] = [];
   private raycaster = new THREE.Raycaster();
   private centre = new THREE.Vector2(0, 0);
 
@@ -97,9 +98,10 @@ class Street {
     this.scene.add(city.root);
 
     this.player = new PlayerController(this.state, this.el.canvas);
-    this.player.setWorld(city.colliders, this.walkableBounds());
+    this.player.setWorld(city.colliders, this.walkableBounds(), city.interiors);
     this.scene.add(this.player.camera);
 
+    this.interiors = city.interiors;
     this.crowd = new Crowd(this.scene);
     this.cards = new CardLayer(this.el.cards);
     this.labels = new LabelLayer(this.el.cards, city.landmarks);
@@ -132,8 +134,26 @@ class Street {
   }
 
   /** Draw counters plus what the overlay is currently showing. */
-  stats(): { triangles: number; calls: number; cards: number; profiled: number; optical: number } {
+  /** The public rooms and where their doors are, for the console and the tests. */
+  rooms(): Array<{ name: string; approach: [number, number]; inside: [number, number]; placeIds: string[] }> {
+    return this.interiors.map((i) => ({
+      name: i.name,
+      approach: [i.approach.x, i.approach.z],
+      inside: [i.entrance.x, i.entrance.z],
+      placeIds: i.placeIds,
+    }));
+  }
+
+  stats(): {
+    triangles: number;
+    calls: number;
+    cards: number;
+    profiled: number;
+    optical: number;
+    at: [number, number];
+  } {
     return {
+      at: [this.player.camera.position.x, this.player.camera.position.z],
       triangles: this.renderer.info.render.triangles,
       calls: this.renderer.info.render.calls,
       cards: this.el.cards.querySelectorAll(".ctos-card:not([hidden])").length,
@@ -409,4 +429,5 @@ window.dedsec = {
   // composited, so "did anything draw" cannot be answered by sampling pixels;
   // it can be answered by asking the renderer.
   stats: () => street.stats(),
+  rooms: () => street.rooms(),
 };

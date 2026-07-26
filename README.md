@@ -200,6 +200,11 @@ modules the browser loads directly — no bundler, no framework, no build server
 **W A S D** walk · **shift** jog · mouse look · **E** stop and look properly ·
 **F** read the nearest device they own · **Esc** step back out · **H** hints.
 
+Walk in through the door of the café, the bar, the clinic, the shop or the
+Nodalis lobby. Those five rooms are `zone: "public"` in the blueprint, which is
+exactly the set anybody may walk into; everything behind them is still a way in
+you have to make.
+
 ### Controls — the field terminal
 
 Click to inspect · double-click the ground to walk · drag to pan · scroll to zoom
@@ -217,7 +222,8 @@ Longer write-up of the systems and the reasoning behind them:
 
 The scope here is the simulation and the sandbox, not a shipped product. Missing:
 save/load, audio, a skill tree beyond the single `deep_crawler` stub, controller
-input, and a mobile layout. The street client is outdoors only — buildings are
-solid, and going inside is still the field terminal's job. The four contracts on the board are a vertical slice —
+input, and a mobile layout. The street client opens the five public ground-floor
+rooms; upper floors, staff areas and the rooms contracts are set in are still
+the field terminal's. The four contracts on the board are a vertical slice —
 `src/mission/missions/index.ts` is where more go, and the objective format means
 they are written as world-state predicates rather than scripted beats.
