@@ -225,6 +225,25 @@ button.is-active { border-color: var(--accent); color: var(--accent); }
 .verb:disabled .name { color: var(--ink-faint); }
 .verb.leverage { border-color: #3a2450; }
 
+/* Pre-commit odds: three outcomes, because "checks first" is not "refuses". */
+.odds { display: flex; flex-direction: column; gap: 3px; margin-top: 5px; }
+.odds-bar {
+  display: flex;
+  height: 4px;
+  border-radius: 2px;
+  overflow: hidden;
+  background: var(--line);
+}
+.odds-act { background: var(--good); }
+.odds-doubt { background: var(--warn); }
+.odds-refuse { background: var(--bad); }
+.odds-row { font-size: 10px; letter-spacing: 0.02em; }
+.odds-good { color: var(--good); }
+.odds-warn { color: var(--warn); }
+.odds-bad { color: var(--bad); }
+.odds-notes { font-size: 10px; color: var(--ink-faint); line-height: 1.4; }
+.odds-cost { font-size: 10px; color: var(--warn); }
+
 .node-row {
   display: flex;
   justify-content: space-between;

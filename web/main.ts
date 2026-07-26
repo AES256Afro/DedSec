@@ -326,12 +326,12 @@ class App {
     const targetId = button.dataset["targetId"]!;
     const index = Number(button.dataset["offerIndex"]);
 
-    const offers = sortOffers(kind === "npc" ? npcVerbs(this.state, targetId) : nodeVerbs(this.state, targetId));
+    const offers = sortOffers(
+      kind === "npc" ? npcVerbs(this.state, targetId, this.destinationParams()) : nodeVerbs(this.state, targetId),
+    );
     const offer = offers[index];
     const params: Record<string, unknown> = { ...(offer && offer.verb.id === verbId ? offer.params : {}) };
-    // A leverage hook's own destination always wins; otherwise the pinned place
-    // is where this play sends people.
-    if (params["placeId"] === undefined && this.targetPlaceId) {
+    if (kind === "node" && params["placeId"] === undefined && this.targetPlaceId) {
       params["placeId"] = this.targetPlaceId;
     }
 
@@ -342,6 +342,14 @@ class App {
 
     this.toast(outcome.message, !outcome.ok);
     this.dirty = true;
+  }
+
+  /**
+   * The pinned destination, in the shape verbs expect. A leverage hook that
+   * carries its own destination still overrides this.
+   */
+  private destinationParams(): Record<string, unknown> {
+    return this.targetPlaceId ? { placeId: this.targetPlaceId } : {};
   }
 
   /** Same as clicking it on the map; used by tooling and the smoke test. */
@@ -439,7 +447,7 @@ class App {
       this.el.inspector.innerHTML = renderNpcInspector(
         this.state,
         person,
-        npcVerbs(this.state, person.id),
+        npcVerbs(this.state, person.id, this.destinationParams()),
         this.targetPlaceId,
       );
     } else if (selection.kind === "node") {

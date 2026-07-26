@@ -92,6 +92,9 @@ export function recomputeLayer(state: GameState, npc: Npc): ProfileLayer {
   if (phoneBreached && secondaryBreached.length >= 2 && cross) layer = 3;
 
   npc.profileLayer = layer;
+  // If you have been through someone's handset you know who they are, whether
+  // or not you ever pointed a camera at them.
+  if (layer >= 1) npc.revealedFields.add("identity");
   for (const secret of npc.secrets) {
     // A secret is legible when its layer is unlocked *and* one of the nodes
     // carrying its evidence has actually been opened.

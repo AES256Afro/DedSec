@@ -12,7 +12,7 @@ import type { WorldEvent } from "../../src/core/events.js";
 import { computeReach, type Reachable } from "../../src/hack/access.js";
 import { estimateBreach } from "../../src/hack/access.js";
 import { investigationRemaining, traceDescription } from "../../src/hack/trace.js";
-import type { OfferedVerb } from "../../src/hack/verbs.js";
+import type { OfferedVerb, VerbForecast } from "../../src/hack/verbs.js";
 import { describeNpc } from "../../src/npc/behavior.js";
 import type { Npc } from "../../src/npc/types.js";
 import { buildDossier } from "../../src/profile/profiler.js";
@@ -234,9 +234,41 @@ function renderVerbList(verbs: OfferedVerb[], targetKind: "node" | "npc", target
         <span class="row"><span class="name">${escapeHtml(verb.label)}</span><span class="cost">${cost}</span></span>
         ${leverageLabel ? `<span class="lever">↳ ${escapeHtml(leverageLabel)}</span>` : ""}
         <span class="why">${escapeHtml(availability.ok ? verb.blurb : (availability.reason ?? "Unavailable."))}</span>
+        ${offered.forecast ? renderForecast(offered.forecast) : ""}
       </button>`;
     })
     .join("");
+}
+
+/**
+ * The odds, and why they are what they are.
+ *
+ * Three bands rather than one number, because "they hesitate and go and check"
+ * is a genuinely different outcome from "they see through you", and the second
+ * one costs suspicion you will feel for the rest of the day.
+ */
+function renderForecast(forecast: VerbForecast): string {
+  const act = forecast.belief;
+  const doubt = Math.max(0, Math.min(1 - act, forecast.doubtBand));
+  const refuse = Math.max(0, 1 - act - doubt);
+  const band = act > 0.6 ? "good" : act > 0.35 ? "warn" : "bad";
+
+  return `<span class="odds">
+    <span class="odds-bar">
+      <span class="odds-act" style="width:${(act * 100).toFixed(1)}%"></span>
+      <span class="odds-doubt" style="width:${(doubt * 100).toFixed(1)}%"></span>
+      <span class="odds-refuse" style="width:${(refuse * 100).toFixed(1)}%"></span>
+    </span>
+    <span class="odds-row odds-${band}">
+      acts ${(act * 100).toFixed(0)}% · checks first ${(doubt * 100).toFixed(0)}% · sees through it ${(refuse * 100).toFixed(0)}%
+    </span>
+    <span class="odds-notes">${forecast.notes.map((n) => escapeHtml(n)).join(" · ")}</span>
+    ${
+      refuse > 0.25
+        ? `<span class="odds-cost">Failing costs them +${(forecast.suspicionOnRefusal * 100).toFixed(0)}% suspicion, and they will tell people.</span>`
+        : ""
+    }
+  </span>`;
 }
 
 /** The app needs the same sorted order to map a click back to its offer. */
