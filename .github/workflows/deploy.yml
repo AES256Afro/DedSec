@@ -21,6 +21,8 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      published: ${{ steps.pages.outputs.enabled }}
     steps:
       - uses: actions/checkout@v4
 
@@ -37,19 +39,57 @@ jobs:
 
       - run: npm run build:site
 
-      # `enablement` turns Pages on for the repository if it is not already,
-      # rather than failing the run and requiring someone to click through
-      # Settings first. The `pages: write` permission above is what allows it.
-      - uses: actions/configure-pages@v5
-        with:
-          enablement: true
+      # `pages: write` lets a workflow publish to a Pages site that already
+      # exists; it cannot *create* one. That is an admin operation, and asking
+      # for it returns "Resource not accessible by integration" — which as an
+      # error is both cryptic and unfixable from inside the repository.
+      #
+      # So: check first. If Pages is off, the build still succeeds (the code is
+      # fine) and the run explains exactly what to click. Only genuine breakage
+      # turns this workflow red.
+      - name: is Pages enabled?
+        id: pages
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh api "repos/${{ github.repository }}/pages" >/dev/null 2>&1; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
 
-      - uses: actions/upload-pages-artifact@v3
+      - name: explain how to turn Pages on
+        if: steps.pages.outputs.enabled != 'true'
+        run: |
+          {
+            echo "## Site built, but not published"
+            echo
+            echo "GitHub Pages is not enabled for this repository, and a workflow token"
+            echo "cannot enable it — creating a Pages site is an admin operation, which"
+            echo "fails with \`Resource not accessible by integration\`."
+            echo
+            echo "**One-time fix:** Settings → Pages → *Build and deployment* →"
+            echo "Source: **GitHub Actions**. Then re-run this workflow."
+            echo
+            echo "After that, point the domain at Pages with a DNS record:"
+            echo
+            echo "| Type | Name | Value |"
+            echo "| --- | --- | --- |"
+            echo "| CNAME | \`dedsek\` | \`${{ github.repository_owner }}.github.io.\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::warning::Pages is not enabled — the site was built but not published. See the run summary for the one setting to change."
+
+      - if: steps.pages.outputs.enabled == 'true'
+        uses: actions/configure-pages@v5
+
+      - if: steps.pages.outputs.enabled == 'true'
+        uses: actions/upload-pages-artifact@v3
         with:
           path: site
 
   deploy:
     needs: build
+    if: needs.build.outputs.published == 'true'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
