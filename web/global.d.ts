@@ -27,10 +27,26 @@ declare global {
       goTo?: (x: number, z: number, lookAtX?: number, lookAtZ?: number) => string | undefined;
       /** Street client: aim at somebody outdoors; returns their name. */
       aimAtSomebody?: () => string | null;
-      /** Street client: the public rooms you can walk into, and where their doors are. */
-      rooms?: () => Array<{ name: string; approach: [number, number]; inside: [number, number]; placeIds: string[] }>;
+      /** Street client: every way in off the street, and whether it is locked. */
+      rooms?: () => Array<{
+        name: string;
+        approach: [number, number];
+        inside: [number, number];
+        placeIds: string[];
+        locked: boolean;
+      }>;
       /** Street client: renderer counters and overlay counts, for the smoke test. */
-      stats?: () => { triangles: number; calls: number; cards: number; profiled: number; optical: number; at: [number, number] };
+      stats?: () => {
+        triangles: number;
+        calls: number;
+        cards: number;
+        profiled: number;
+        optical: number;
+        at: [number, number];
+        floor: number;
+        /** Who the crosshair is on, for diagnosing a card that will not close. */
+        focus: string | null;
+      };
     };
   }
 }

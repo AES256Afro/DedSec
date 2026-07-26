@@ -420,33 +420,90 @@ devices. Every layer above it still costs a breach. People behind a wall get a
 dashed card so the overlay never pretends you are looking at someone you are
 not.
 
-### Interiors, and why only five buildings have them
+### Interiors: every room, on every floor
 
-You can walk into the Nodalis lobby, the café floor, the bar, the clinic waiting
-room and the shop. You cannot walk into anything else.
+Every building the simulation models is now hollow all the way up. Nodalis Labs
+has five storeys, thirty-odd rooms, a stairwell, and a badge door between the
+reception desk and the corridor behind it — and all of that is built from data
+that had been sitting in the blueprint since the beginning, unbuilt.
 
-That is not a scoping compromise dressed up as a rule — it *is* the access
-model. The blueprint marks exactly five ground-floor rooms `zone: "public"`, and
-those are the rooms anybody may walk into. Everything behind them is semi, staff
-or restricted, and getting in there is still the game.
+The blueprint places rooms at normalised `u`/`v` inside the footprint. It does
+not give them extents, because on a top-down map they never needed any. So the
+floor gets diced into a grid of roughly four-and-a-half-metre cells, and every
+cell is assigned to the room whose centre it is nearest. That is a discrete
+Voronoi partition, and it has the three properties this needed:
 
-The building is built to match. A public room becomes a real volume: floor,
-ceiling, three walls and a facade with a five-metre gap in it, positioned on
-whichever side the blueprint's own `u`/`v` put the room nearest. The rest of the
-footprint stays solid at ground level, and everything above the ground floor is
-a single solid mass.
+- it **tiles the footprint exactly** — no gaps to fall through, no overlaps;
+- it **keeps the authored positions**, so the security office stays in the
+  corner the blueprint put it in and simply grows to fill it;
+- it makes walls **fall out of the data**: wherever two adjacent cells belong to
+  different rooms, there is a boundary, and a boundary is a wall.
 
-Two things this got wrong first:
+Doors are the exceptions to that. Where the graph has an edge between two rooms,
+one boundary segment is opened — the one nearest the straight line between the
+two room centres, which is where a person would have put the door. A cell-wide
+hole read as a missing wall rather than as a way in, so the opening is cut to
+door width with wall either side and a lintel over it; a two-cell entrance
+therefore comes out as a pair of doors with a pier between them.
 
-- **The doorway was sealed by the wall that was supposed to have it.** The
-  "everything that is not the room stays solid" pass ran across all four sides,
-  including the one the door had just been carved into. The facade strip now
-  gets skipped there and is built separately, in two pieces.
-- **Snapping had to change.** Free movement rejoins the simulation by asking
-  which place you are nearest, and near a wall the nearest place is often the
-  staff room on the other side of it. `placeAt` answers from the interior's own
-  place list when you are inside one, so you can never be snapped somewhere the
-  access model would not let you stand.
+**The locks are not a second implementation.** Where the graph edge carries a
+door, the opening gets a leaf, and every frame that leaf asks `playerCanPass`
+— the same function the pathfinder and the 2D client ask. A badge door is
+physically shut until the simulation says otherwise, and it opens because you
+cloned a badge, not because the renderer has its own idea about locks.
+
+### Making a room look like a room
+
+Three things had to be true before an interior was worth walking into, and all
+three were wrong in the first version that worked.
+
+**Light.** Every light in this game belongs to the sky, and a ceiling faces away
+from all of them. So the interiors rendered exactly as physics says they should:
+a black slab overhead, and walls that went out whenever the sun swung round.
+Rather than scatter point lights the renderer would have to solve per fragment,
+interior surfaces carry a flat emissive floor, and strip lights under the
+ceiling give the room something that visibly *is* the reason it is bright. The
+crowd carries the same lift, because a receptionist in a navy coat was rendering
+as a black slab with a face on it.
+
+**Structure.** A 260 × 190 metre floorplate with nothing in it is a warehouse.
+Columns on a nine-metre bay cost almost nothing and are the reason no real
+building looks like that. Furniture follows from `place.kind` — desks in
+offices, racks in the server room, crates in storage — placed only on cells
+well inside a room, never on a threshold, and never on the room's own
+coordinates, which is where anything arriving by the place graph gets put down.
+A column on a landing is a player standing inside a solid box with every
+direction blocked.
+
+**Draw calls.** Every floor of every building is tens of thousands of boxes
+between them, and tens of thousands of meshes is a slideshow regardless of how
+few triangles each one has. Nothing in `interior.ts` adds a mesh: walls, slabs,
+columns, furniture and light strips are collected, and one flush at the end of
+`buildCity` turns the whole city's worth into three instanced draws. Doors are
+the exception — there are twenty-one, and each has to be shown or hidden on its
+own. The city renders in about eighty draw calls with every interior in it.
+
+### Stairs
+
+Floors are connected in the graph already: one stairwell place per storey, wired
+vertically. So taking the stairs asks the graph rather than doing arithmetic on
+floor indices — stand in a stairwell, `space` goes up and `C` goes down, and a
+building with a missing storey keeps working. Repositioning the player no longer
+resets their height, because a floor is somewhere you stay rather than somewhere
+you can be for one frame.
+
+Two things fell out of this that were not obvious:
+
+- **Snapping had to answer from the plan.** Free movement rejoins the simulation
+  by asking which place you are nearest, and near a wall the nearest place is
+  often the room on the other side of it. `placeAt` reads the grid cell you are
+  standing in, so you can never be snapped somewhere the access model would not
+  let you stand — on any floor.
+- **Collision is a slab, not a column.** The player's probe spans their body
+  rather than the whole height of the world, so a wall on the floor above is not
+  in your way. Colliders are also bucketed on a coarse grid now, because a
+  linear scan of every wall in the city, twice per axis per frame, became the
+  most expensive thing in the client the moment the buildings got insides.
 
 ### What a headless renderer does to a walking test
 
@@ -508,7 +565,10 @@ but more *order kinds* and more *secret templates*, since both multiply against
 the existing verb set rather than adding to it linearly — and now also more
 *case templates*, which multiply against the population generator the same way.
 
-The street client is outdoors only. Buildings are solid; going inside one is
-still the field terminal's job. Interiors would need the graph's indoor places
-extruded and doors made traversable in 3D, which is a real piece of work rather
-than a missing constant.
+What the street client still does not have is furniture you can interact with.
+Every device the simulation models has a place, and a room now has a volume, but
+a terminal in the server room is not yet a thing standing in the corner of it —
+it is reached by radio range like everything else. Putting the network in the
+room is the obvious next piece of work, and it is a real one: it needs devices
+positioned within a floor plan rather than at a place, which is a change to the
+generator and not a constant in the renderer.

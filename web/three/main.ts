@@ -29,14 +29,17 @@ import { computeReach, profilableNpcs } from "../../src/hack/access.js";
 import { passiveScan } from "../../src/profile/profiler.js";
 import { breach, refreshProfiles, visibleNpcs } from "../../src/sim/actions.js";
 import type { GameState } from "../../src/sim/state.js";
-import { step } from "../../src/sim/step.js";
+import { playerCanPass, step } from "../../src/sim/step.js";
+import type { Place } from "../../src/world/types.js";
 import { CARD_RANGE, CardLayer, LabelLayer } from "./cards.js";
 import { Crowd } from "./crowd.js";
+import { emptyInteriors } from "./interior.js";
+import type { BuiltInteriors } from "./interior.js";
 import { renderProfilePanel } from "./panel.js";
 import { PlayerController } from "./player.js";
 import { Sky } from "./sky.js";
 import { buildCity, nearestOutdoorPlace } from "./world.js";
-import type { Interior, LitSurface } from "./world.js";
+import type { LitSurface } from "./world.js";
 
 /** Wall-clock milliseconds per world-minute. Slow: this is a walk, not a shift. */
 const MS_PER_MINUTE = 1400;
@@ -44,6 +47,8 @@ const MS_PER_MINUTE = 1400;
 const VISION_INTERVAL_MS = 320;
 /** People profiled per vision pass — staggered so the street fills in. */
 const SCANS_PER_PASS = 3;
+/** How far outside a doorway `rooms()` stands, for the console and the tests. */
+const APPROACH = 7;
 
 class Street {
   readonly state: GameState;
@@ -55,7 +60,9 @@ class Street {
   private labels: LabelLayer;
   private sky: Sky;
   private lit: LitSurface[];
-  private interiors: Interior[] = [];
+  private interiors: BuiltInteriors = emptyInteriors();
+  /** Which doors were shut last time we asked, so we only rebuild on a change. */
+  private shutDoorIds = "";
   private raycaster = new THREE.Raycaster();
   private centre = new THREE.Vector2(0, 0);
 
@@ -76,6 +83,7 @@ class Street {
     panel: document.getElementById("panel")!,
     panelBody: document.getElementById("panel-body")!,
     clock: document.getElementById("hud-clock")!,
+    where: document.getElementById("hud-where")!,
     ledger: document.getElementById("hud-ledger")!,
     prompt: document.getElementById("hud-prompt")!,
     toast: document.getElementById("toast")!,
@@ -97,11 +105,12 @@ class Street {
     this.lit = city.lit;
     this.scene.add(city.root);
 
-    this.player = new PlayerController(this.state, this.el.canvas);
-    this.player.setWorld(city.colliders, this.walkableBounds(), city.interiors);
-    this.scene.add(this.player.camera);
-
     this.interiors = city.interiors;
+    this.player = new PlayerController(this.state, this.el.canvas);
+    this.player.setWorld(city.colliders, this.walkableBounds(), city.interiors.plans);
+    this.scene.add(this.player.camera);
+    this.refreshDoors();
+
     this.crowd = new Crowd(this.scene);
     this.cards = new CardLayer(this.el.cards);
     this.labels = new LabelLayer(this.el.cards, city.landmarks);
@@ -152,14 +161,94 @@ class Street {
     return null;
   }
 
-  /** The public rooms and where their doors are, for the console and the tests. */
-  rooms(): Array<{ name: string; approach: [number, number]; inside: [number, number]; placeIds: string[] }> {
-    return this.interiors.map((i) => ({
-      name: i.name,
-      approach: [i.approach.x, i.approach.z],
-      inside: [i.entrance.x, i.entrance.z],
-      placeIds: i.placeIds,
-    }));
+  /**
+   * Every way in off the street, for the console and the tests.
+   *
+   * `approach` stands a few metres outside the opening and `inside` is a few
+   * metres past it, so walking from one towards the other goes through the door
+   * rather than into the wall next to it. Locked entrances are listed too — a
+   * front door you cannot open is a fact about the building, not a bug.
+   */
+  rooms(): Array<{
+    name: string;
+    approach: [number, number];
+    inside: [number, number];
+    placeIds: string[];
+    locked: boolean;
+  }> {
+    return this.interiors.entrances.map((entrance) => {
+      const place = this.state.city.graph.places.get(entrance.placeId);
+      const door = entrance.doorId
+        ? this.state.city.graph.doors.get(entrance.doorId)
+        : undefined;
+      return {
+        name: place?.name ?? entrance.placeId,
+        approach: [entrance.x + entrance.ox * APPROACH, entrance.z + entrance.oz * APPROACH],
+        inside: [entrance.x - entrance.ox * APPROACH, entrance.z - entrance.oz * APPROACH],
+        placeIds: [entrance.placeId],
+        locked: !playerCanPass(this.state, door),
+      };
+    });
+  }
+
+  /**
+   * Every door, shown or hidden by what the simulation says about its lock.
+   *
+   * This is the whole of the locking model in three dimensions: there is no
+   * second rule here, only `playerCanPass` asked once per door. Unlock a
+   * smart lock from the panel and the leaf disappears on the next pass, because
+   * the leaf never knew anything the simulation did not.
+   */
+  private refreshDoors(): void {
+    const shut: THREE.Box3[] = [];
+    const ids: string[] = [];
+    for (const slab of this.interiors.doors) {
+      const door = this.state.city.graph.doors.get(slab.doorId);
+      const open = playerCanPass(this.state, door);
+      slab.mesh.visible = !open;
+      if (!open) {
+        shut.push(slab.box);
+        ids.push(slab.doorId);
+      }
+    }
+    // Rebuilding the collider list every frame would be pointless work; doors
+    // change state a handful of times in a session.
+    const key = ids.join(",");
+    if (key === this.shutDoorIds) return;
+    this.shutDoorIds = key;
+    this.player.setShutDoors(shut);
+  }
+
+  /** The stairwell you are standing in, if you are standing in one. */
+  private stairwell(): Place | undefined {
+    const place = this.state.city.graph.places.get(this.state.player.placeId);
+    return place?.kind === "stairwell" ? place : undefined;
+  }
+
+  /**
+   * Take the stairs.
+   *
+   * The graph already has a vertical edge between every pair of stacked
+   * stairwells, so this asks it rather than doing arithmetic on floor indices:
+   * a building with a missing storey, or one where the lift is the only way up,
+   * keeps working.
+   */
+  private takeStairs(direction: 1 | -1): void {
+    const here = this.stairwell();
+    if (!here) return;
+    const graph = this.state.city.graph;
+    for (const edge of graph.edgesFrom(here.id)) {
+      const other = graph.places.get(edge.a === here.id ? edge.b : edge.a);
+      if (!other || other.floor !== here.floor + direction) continue;
+      this.player.moveToFloor(other.floor, other.x, other.y);
+      this.toast({
+        ok: true,
+        message: `${direction > 0 ? "Up" : "Down"} to ${other.name.replace(/ stairwell.*/, "")} floor ${other.floor}.`,
+      });
+      this.refreshVision();
+      return;
+    }
+    this.toast({ ok: false, message: direction > 0 ? "Top of the stairs." : "Ground floor." });
   }
 
   stats(): {
@@ -169,9 +258,15 @@ class Street {
     profiled: number;
     optical: number;
     at: [number, number];
+    floor: number;
+    focus: string | null;
   } {
     return {
       at: [this.player.camera.position.x, this.player.camera.position.z],
+      floor: this.player.floor(),
+      // Who the crosshair is on. A card that will not go away is only
+      // diagnosable if you can ask what it is a card *for*.
+      focus: this.focusId ? (this.state.npcs.get(this.focusId)?.name ?? this.focusId) : null,
       triangles: this.renderer.info.render.triangles,
       calls: this.renderer.info.render.calls,
       cards: this.el.cards.querySelectorAll(".ctos-card:not([hidden])").length,
@@ -220,6 +315,12 @@ class Street {
         case "Digit4":
         case "Digit5":
           this.actOnCard(event.code.slice(5));
+          break;
+        case "Space":
+          this.takeStairs(1);
+          break;
+        case "KeyC":
+          this.takeStairs(-1);
           break;
         case "Escape":
           this.closePanel();
@@ -345,6 +446,7 @@ class Street {
     if (this.visionTimer >= VISION_INTERVAL_MS) {
       this.visionTimer = 0;
       this.refreshVision();
+      this.refreshDoors();
     }
 
     // 4. Draw. The hour first, since everything else is lit by it.
@@ -440,6 +542,7 @@ class Street {
   private renderHud(): void {
     this.el.clock.textContent = `${formatTime(this.state.time)} · day ${dayOf(this.state.time) + 1}`;
     this.el.ledger.textContent = ledgerLine(this.state.ledger);
+    this.renderWhere();
 
     const person = this.focusId ? this.state.npcs.get(this.focusId) : undefined;
     this.el.prompt.hidden = !person || this.panelOpen;
@@ -450,6 +553,29 @@ class Street {
       this.el.panelBody.innerHTML = renderProfilePanel(this.state, person, computeReach(this.state));
       this.panelDirty = false;
     }
+  }
+
+  /**
+   * Where you are, once you are somewhere that has a name.
+   *
+   * Outdoors this is silent: you can see where you are. Five floors of
+   * corridors that all look alike is the one place in this game where a label
+   * is doing real work, so indoors it says the room, its clearance, and whether
+   * the thing you are standing in goes up.
+   */
+  private renderWhere(): void {
+    const place = this.state.city.graph.places.get(this.state.player.placeId);
+    if (!place || !place.indoor) {
+      this.el.where.hidden = true;
+      return;
+    }
+    const building = place.buildingId
+      ? this.state.city.buildings.get(place.buildingId)?.name
+      : undefined;
+    const stairs = place.kind === "stairwell" ? " · space/C" : "";
+    this.el.where.hidden = false;
+    this.el.where.textContent = `${building ? `${building} · ` : ""}${place.name} · L${place.floor}${stairs}`;
+    this.el.where.dataset["zone"] = place.zone;
   }
 }
 
