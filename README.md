@@ -1,5 +1,7 @@
 # DedNec
 
+[![CI](https://github.com/AES256Afro/DedNec/actions/workflows/ci.yml/badge.svg)](https://github.com/AES256Afro/DedNec/actions/workflows/ci.yml)
+
 A systemic social-engineering sandbox: ctOS-style profiling, hacking and human
 manipulation, with combat removed entirely.
 
