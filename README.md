@@ -14,13 +14,17 @@ leave.
 
 ```bash
 npm install
-npm test          # 67 tests over the simulation core
-npm run serve     # then open http://localhost:5173/
-npm run sim       # headless: watch the city run with no player in it
+npm test           # 71 tests over the simulation core
+npm run serve      # then open http://localhost:5173/
+npm run sim        # headless: watch the city run with no player in it
+npm run build:site # static bundle in site/ — any host will serve it
 ```
 
 Add `?seed=marina` to the URL for a different city. Same seed, same city, same
-tangle of secrets, every time.
+tangle of secrets, every time — which is also the whole save system, since world
+state lives in the tab and is regenerated from the seed.
+
+Deployment (GitHub Pages, custom domain, DNS): [`docs/hosting.md`](docs/hosting.md).
 
 ## The loop
 

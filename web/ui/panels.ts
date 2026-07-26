@@ -192,9 +192,29 @@ export function renderNodeInspector(state: GameState, node: NetworkNode, verbs: 
     </div>
     ${breachBlock}
     <div class="section-title"><span>Plays</span><span class="faint">${verbs.filter((v) => v.availability.ok).length} available</span></div>
-    ${renderVerbList(verbs, "node", node.id)}
+    ${renderVerbList(verbs, "node", node.id, NODE_PURPOSE[node.kind] ?? "This device does nothing on its own.")}
   `;
 }
+
+/**
+ * What a device is *for*, shown when it exposes no plays of its own.
+ *
+ * Several node kinds are pure infrastructure — a junction box only extends your
+ * reach, a gateway only opens its subnet — and a bare "Nothing applies here"
+ * makes the most useful thing on the street read as a dead end. Playtesting the
+ * opening minute is what surfaced this: the first device a new player clicks is
+ * usually the relay.
+ */
+const NODE_PURPOSE: Partial<Record<NetworkNode["kind"], string>> = {
+  relay: "No plays of its own — this is a stepping stone. Breach it and everything within its radius comes into reach, including devices you could never get near on foot.",
+  router: "No plays of its own. Breach it and every device on this subnet opens at once — the single biggest jump in reach available to you.",
+  smart_lock: "Breach it to throw the lock, or to hold the door shut with a maintenance flag.",
+  light: "Breach it to fake an electrical fault — degrades the cameras in the room and unsettles the people in it.",
+  phone: "Breach it to read the owner's life: contacts, calendar, interests, and their badge if they carry one.",
+  laptop: "Breach it as a second source. On its own it proves little; linked to the owner's handset it opens their private life.",
+  elevator: "Breach it to strand whoever is inside, or to keep a floor unreachable for a while.",
+  printer: "Breach it for the document queue — a quiet second source for anyone who has printed something they should not have.",
+};
 
 function renderBreachEstimate(state: GameState, node: NetworkNode, entry: Reachable): string {
   const estimate = estimateBreach(state, node, entry);
@@ -211,8 +231,13 @@ function renderBreachEstimate(state: GameState, node: NetworkNode, entry: Reacha
 
 /* ------------------------------------------------------------------ verbs */
 
-function renderVerbList(verbs: OfferedVerb[], targetKind: "node" | "npc", targetId: string): string {
-  if (verbs.length === 0) return `<p class="locked">Nothing applies here.</p>`;
+function renderVerbList(
+  verbs: OfferedVerb[],
+  targetKind: "node" | "npc",
+  targetId: string,
+  emptyHint = "Nothing applies here.",
+): string {
+  if (verbs.length === 0) return `<p class="locked">${escapeHtml(emptyHint)}</p>`;
   // Available first, then leverage-unlocked, then the rest — the ordering is
   // the hint: if something new appeared, it is because you learned something.
   const sorted = [...verbs].sort((a, b) => {
@@ -319,22 +344,30 @@ export function renderPlaceInspector(state: GameState, placeId: string): string 
 
 export function renderNetwork(state: GameState): string {
   const reach = computeReach(state);
+  // Still-takeable devices first, nearest first. Sorting the breached ones to
+  // the top buries everything the player can still act on under a list of
+  // things they have already finished with.
   const entries = [...reach.values()].sort((a, b) => {
-    if (a.node.breached !== b.node.breached) return a.node.breached ? -1 : 1;
+    if (a.node.breached !== b.node.breached) return a.node.breached ? 1 : -1;
     return a.distance - b.distance;
   });
   if (entries.length === 0) return `<p class="locked">Nothing in radio range.</p>`;
 
-  return entries
-    .slice(0, 120)
-    .map(
-      (entry) =>
-        `<div class="node-row ${entry.node.breached ? "is-breached" : ""}" data-select-node="${entry.node.id}">
-          <span>${escapeHtml(entry.node.label)}</span>
-          <span class="via">${entry.node.breached ? "open" : escapeHtml(entry.source.label)}</span>
-        </div>`,
-    )
-    .join("");
+  const row = (entry: Reachable) =>
+    `<div class="node-row ${entry.node.breached ? "is-breached" : ""}" data-select-node="${entry.node.id}">
+      <span>${escapeHtml(entry.node.label)}</span>
+      <span class="via">${entry.node.breached ? "open" : escapeHtml(entry.source.label)}</span>
+    </div>`;
+
+  const open = entries.filter((e) => e.node.breached);
+  const available = entries.filter((e) => !e.node.breached);
+
+  return [
+    available.slice(0, 100).map(row).join(""),
+    open.length > 0
+      ? `<div class="section-title"><span>Already open</span><span class="faint">${open.length}</span></div>${open.map(row).join("")}`
+      : "",
+  ].join("");
 }
 
 /* ------------------------------------------------------------------ chrome */
