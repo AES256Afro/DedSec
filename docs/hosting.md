@@ -15,8 +15,9 @@ npx serve site          # or python3 -m http.server, or drag it anywhere
 `main`, gated behind the test suite so a broken world never reaches the domain.
 `site/CNAME` is written with the custom domain during the build.
 
-Two steps have to happen by hand, once. Neither can be automated, and it is
-worth knowing exactly why.
+Four steps have to happen by hand, once. None can be automated — three are
+repository settings, which a workflow token cannot write, and one is DNS. Each
+is worth knowing exactly why, because every one of them fails *quietly*.
 
 **1. Turn Pages on.** Settings → Pages → *Build and deployment* → Source:
 **GitHub Actions**.
@@ -125,12 +126,12 @@ warns when they disagree, which turns this from an afternoon into a glance.
 ### The custom domain hides the github.io URL
 
 Worth knowing before you go looking for the site: once a custom domain is
-configured, Pages **redirects** `aes256afro.github.io/Dedsec` to it. So between
+configured, Pages **redirects** `aes256afro.github.io/DedSec` to it. So between
 setting the domain and DNS resolving there is no working URL at all — the deploy
 succeeded, the redirect target just does not exist yet.
 
 To look at a build before sorting out DNS, clear the Settings field. The site
-then serves from `aes256afro.github.io/Dedsec`; the pages use relative asset
+then serves from `aes256afro.github.io/DedSec`; the pages use relative asset
 paths, so they work under a subpath without changes.
 
 ### Renaming the domain

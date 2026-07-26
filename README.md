@@ -1,6 +1,6 @@
-# Dedsec
+# DedSec
 
-[![CI](https://github.com/AES256Afro/Dedsec/actions/workflows/ci.yml/badge.svg)](https://github.com/AES256Afro/Dedsec/actions/workflows/ci.yml)
+[![CI](https://github.com/AES256Afro/DedSec/actions/workflows/ci.yml/badge.svg)](https://github.com/AES256Afro/DedSec/actions/workflows/ci.yml)
 
 A city you walk around at night while ctOS reads everybody in it. No combat, no
 fail state, no timer. Profile cards pop over people as you pass them, most of
