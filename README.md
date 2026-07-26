@@ -56,6 +56,20 @@ and what abandoning their current task would cost them. Three outcomes: they
 comply, they hesitate and go and check, or they see through it — gain suspicion,
 remember it, and tell their colleagues.
 
+**The odds are on the button, before you spend them.** Every fallible play shows
+what it will actually score and why:
+
+```
+Fabricate an app alert                            1.0m · trace +5%
+acts 60% · checks first 22% · sees through it 18%
++ leans on something they actually care about · + middling curiosity (0.63)
+· − follows procedure, will check
+```
+
+Both that readout and the live roll go through the same `scoreImpulse`, so they
+cannot drift — there is a test pinning them to within a float. Manipulation is a
+read of a person, not a coin flip you only understand afterwards.
+
 Traits are not all shields. `diligence` and `techLiteracy` make someone harder to
 move; `curiosity`, `greed`, `vanity`, `gullibility` and `anxiety` make them
 *easier* — a bait file works better on a curious person, not worse. Which is

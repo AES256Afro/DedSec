@@ -78,6 +78,31 @@ The fix was `TRAIT_POLARITY`: `+1` traits are shields, `−1` traits are hooks, 
 the field was renamed `hingesOn` because "resisted by" was the wrong idea, not
 just the wrong sign.
 
+### Showing the odds
+
+A three-outcome model is only worth having if the player can see it. Fallible
+verbs implement `forecast`, which builds a probe impulse and runs it through the
+*same* `scoreImpulse` the live path uses, so the readout on the button and the
+number that gets rolled against are the same value by construction — pinned by a
+test to within a float.
+
+Three bands rather than one percentage, because "checks first" is genuinely
+different from "sees through it": the first costs you a few minutes, the second
+costs you that person for the rest of the day and gets mentioned to their
+colleagues. The button says so, including the exact suspicion penalty, whenever
+refusal is likely.
+
+The reasons matter as much as the number. `explainPlausibility` and
+`scoreImpulse` return signed notes — `+ leans on something they actually care
+about`, `− wrong time of day for this claim`, `− on a post they are accountable
+for` — so a weak play is a decision the player is making rather than a surprise
+they eat. It also makes timing legible: the same pretext is worth waiting an hour
+for, and now you can see that.
+
+Pinning a destination flows into the forecast too, rather than being merged in at
+invoke time. That way "no destination pinned: they will only stop and stare"
+shows up as a listed reason before you spend the attempt.
+
 ### Claims versus facts
 
 The second version of that same mistake: environmental verbs were being
@@ -187,6 +212,9 @@ asserted:
 - **The world booted cold**, with fifty people standing in their bedrooms at half
   nine in the morning. `warmStart` places everyone where their routine says they
   already are.
+- **Reading someone's phone did not tell you their name.** `identity` was only
+  set by a passive scan, so a fully breached handset could still render as
+  "UNIDENTIFIED". Layer 1 now implies it.
 
 ## Deliberate omissions
 

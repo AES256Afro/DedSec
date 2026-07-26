@@ -19,7 +19,7 @@
  */
 
 import { formatTime, minuteOfDay } from "../core/time.js";
-import { queueImpulse } from "../npc/behavior.js";
+import { DOUBT_BAND, queueImpulse, scoreImpulse } from "../npc/behavior.js";
 import type { Impulse, ImpulseAction, ImpulseSource, Npc, TraitKey } from "../npc/types.js";
 import { blockAt } from "../npc/schedule.js";
 import { nextId, schedule, type GameState } from "../sim/state.js";
@@ -52,6 +52,26 @@ export interface VerbOutcome {
   belief?: number;
 }
 
+/**
+ * What a fallible play would score if fired right now.
+ *
+ * Manipulation should be a read of a person, not a coin flip you only
+ * understand afterwards. Verbs that can be disbelieved implement `forecast` so
+ * the UI can show honest odds and the reasoning behind them *before* the player
+ * spends the attempt — and spends the suspicion that a failure costs.
+ */
+export interface VerbForecast {
+  /** 0..1 chance they act on it outright. */
+  belief: number;
+  /** Roughly this much again ends in hesitation rather than outright refusal. */
+  doubtBand: number;
+  hingesOn: TraitKey;
+  /** Signed, player-facing reasons. */
+  notes: string[];
+  /** Suspicion this adds to the target if they see through it. */
+  suspicionOnRefusal: number;
+}
+
 export interface HackVerb {
   id: string;
   label: string;
@@ -71,7 +91,42 @@ export interface HackVerb {
   evidence: number;
   minutes: number;
   available?(ctx: VerbContext): VerbAvailability;
+  /** Implemented by verbs the target is allowed to disbelieve. */
+  forecast?(ctx: VerbContext): VerbForecast | undefined;
   run(ctx: VerbContext): VerbOutcome;
+}
+
+/**
+ * Score a pretext against a person without touching the world. Shares
+ * `scoreImpulse` with the live path, so what the player is shown is exactly
+ * what will be rolled against.
+ */
+export function forecastBelief(
+  state: GameState,
+  target: Npc,
+  spec: { plausibility: number; hingesOn: TraitKey; suspicionOnRefusal: number },
+  plausibilityNotes: string[] = [],
+): VerbForecast {
+  const probe: Impulse = {
+    id: "forecast",
+    source: "player",
+    label: "",
+    priority: 0.5,
+    action: { type: "fixate", minutes: 1 },
+    plausibility: spec.plausibility,
+    hingesOn: spec.hingesOn,
+    createdAt: state.time,
+    expiresAt: state.time,
+    suspicionOnRefusal: spec.suspicionOnRefusal,
+  };
+  const score = scoreImpulse(target, probe, state.time);
+  return {
+    belief: score.belief,
+    doubtBand: DOUBT_BAND,
+    hingesOn: spec.hingesOn,
+    notes: [...plausibilityNotes, ...score.notes],
+    suspicionOnRefusal: spec.suspicionOnRefusal,
+  };
 }
 
 /* ------------------------------------------------------------------ helpers */
@@ -108,41 +163,76 @@ export function npcsNear(state: GameState, placeId: PlaceId, metres: number): Np
  * noon and absurd at four in the morning; a claim about someone's actual
  * hobby lands far harder than a generic one.
  */
-export function contextualPlausibility(
+export interface PlausibilityOptions {
+  /** Interest the pretext leans on; matching one of theirs is a big boost. */
+  interest?: string;
+  /** Impersonated contact — their trust rating modulates belief. */
+  asNpcId?: string;
+  /** Hours the claim makes sense in; outside them it reads as wrong. */
+  sensibleHours?: [number, number];
+}
+
+/**
+ * Plausibility with its reasoning attached.
+ *
+ * The player is entitled to know *why* a pretext is weak before they spend it —
+ * "you are telling a night-shift bartender their bank opens in ten minutes" is
+ * a decision they should get to make, not a surprise they get to eat.
+ */
+export function explainPlausibility(
   state: GameState,
   target: Npc,
   base: number,
-  opts: {
-    /** Interest the pretext leans on; matching one of theirs is a big boost. */
-    interest?: string;
-    /** Impersonated contact — their trust rating modulates belief. */
-    asNpcId?: string;
-    /** Hours the claim makes sense in; outside them it reads as wrong. */
-    sensibleHours?: [number, number];
-  } = {},
-): number {
+  opts: PlausibilityOptions = {},
+): { value: number; notes: string[] } {
   let p = base;
+  const notes: string[] = [];
   const hour = minuteOfDay(state.time) / 60;
 
   if (opts.interest) {
     const matches = target.interests.some((i) => i.toLowerCase().includes(opts.interest!.toLowerCase()));
     p += matches ? 0.25 : -0.15;
+    notes.push(matches ? `+ leans on something they actually care about` : `− not one of their interests`);
   }
 
   if (opts.asNpcId) {
     const rel = target.relationships.find((r) => r.otherId === opts.asNpcId);
-    p += rel ? (rel.trust - 0.5) * 0.5 : -0.3;
+    const other = state.npcs.get(opts.asNpcId);
+    if (rel) {
+      p += (rel.trust - 0.5) * 0.5;
+      notes.push(
+        `${rel.trust >= 0.5 ? "+" : "−"} ${rel.kind.replace(/_/g, " ")} they trust ${(rel.trust * 100).toFixed(0)}%`,
+      );
+    } else {
+      p -= 0.3;
+      notes.push(`− ${other?.name ?? "that contact"} is a stranger to them`);
+    }
   }
 
   if (opts.sensibleHours) {
     const [from, to] = opts.sensibleHours;
     const inWindow = from <= to ? hour >= from && hour < to : hour >= from || hour < to;
-    if (!inWindow) p -= 0.3;
+    if (!inWindow) {
+      p -= 0.3;
+      notes.push(`− wrong time of day for this claim`);
+    }
   }
 
-  if (target.condition === "normal" && blockAt(target, state.time)?.activity === "sleep") p -= 0.2;
+  if (target.condition === "normal" && blockAt(target, state.time)?.activity === "sleep") {
+    p -= 0.2;
+    notes.push(`− they are asleep`);
+  }
 
-  return Math.max(0.03, Math.min(0.95, p));
+  return { value: Math.max(0.03, Math.min(0.95, p)), notes };
+}
+
+export function contextualPlausibility(
+  state: GameState,
+  target: Npc,
+  base: number,
+  opts: PlausibilityOptions = {},
+): number {
+  return explainPlausibility(state, target, base, opts).value;
 }
 
 export interface DeliverOptions {
@@ -493,6 +583,21 @@ const DISTRACTION: HackVerb[] = [
       }
       return { ok: true };
     },
+    forecast(ctx) {
+      const { state, target } = ctx;
+      if (!target) return undefined;
+      const interest = param(ctx, "interest", target.interests[0] ?? "their hobby");
+      const { value, notes } = explainPlausibility(state, target, 0.62, { interest });
+      if (!ctx.params["placeId"]) {
+        notes.push("− no destination pinned: they will only stop and stare");
+      }
+      return forecastBelief(
+        state,
+        target,
+        { plausibility: value, hingesOn: "curiosity", suspicionOnRefusal: 0.18 },
+        notes,
+      );
+    },
     run(ctx) {
       const { state, target } = ctx;
       if (!target) return fail("No person selected.");
@@ -512,7 +617,12 @@ const DISTRACTION: HackVerb[] = [
         suspicionOnRefusal: 0.18,
         originHackId: "fake_app_alert",
       });
-      return ok(`Alert pushed to ${target.name} about ${interest}.`, plausibility);
+      const belief = forecastBelief(state, target, {
+        plausibility,
+        hingesOn: "curiosity",
+        suspicionOnRefusal: 0.18,
+      }).belief;
+      return ok(`Alert pushed to ${target.name} about ${interest}.`, belief);
     },
   },
   {
@@ -589,15 +699,21 @@ function forgery(def: ForgeryDef): HackVerb {
       }
       return { ok: true };
     },
+    forecast({ state, target, params }) {
+      if (!target) return undefined;
+      const { value, notes } = explainPlausibility(state, target, def.base, plausibilityOpts(def, params));
+      return forecastBelief(
+        state,
+        target,
+        { plausibility: value, hingesOn: def.hingesOn, suspicionOnRefusal: def.suspicionOnRefusal },
+        notes,
+      );
+    },
     run(ctx) {
       const { state, target } = ctx;
       if (!target) return fail("No person selected.");
       const built = def.build(ctx, target);
-      const plausibility = contextualPlausibility(state, target, def.base, {
-        ...(ctx.params["asNpcId"] ? { asNpcId: String(ctx.params["asNpcId"]) } : {}),
-        ...(ctx.params["interest"] ? { interest: String(ctx.params["interest"]) } : {}),
-        ...(def.sensibleHours ? { sensibleHours: def.sensibleHours } : {}),
-      });
+      const plausibility = contextualPlausibility(state, target, def.base, plausibilityOpts(def, ctx.params));
       deliver(state, target, {
         label: built.label,
         action: built.action,
@@ -608,8 +724,22 @@ function forgery(def: ForgeryDef): HackVerb {
         suspicionOnRefusal: def.suspicionOnRefusal,
         originHackId: def.id,
       });
-      return ok(`Sent to ${target.name}. Believability ${(plausibility * 100).toFixed(0)}%.`, plausibility);
+      const belief = forecastBelief(state, target, {
+        plausibility,
+        hingesOn: def.hingesOn,
+        suspicionOnRefusal: def.suspicionOnRefusal,
+      }).belief;
+      return ok(`Sent to ${target.name}. They act on it ${(belief * 100).toFixed(0)}% of the time.`, belief);
     },
+  };
+}
+
+/** Shared so the forecast and the live send can never disagree. */
+function plausibilityOpts(def: ForgeryDef, params: Record<string, unknown>): PlausibilityOptions {
+  return {
+    ...(params["asNpcId"] ? { asNpcId: String(params["asNpcId"]) } : {}),
+    ...(params["interest"] ? { interest: String(params["interest"]) } : {}),
+    ...(def.sensibleHours ? { sensibleHours: def.sensibleHours } : {}),
   };
 }
 
@@ -1504,6 +1634,18 @@ export interface OfferedVerb {
   /** Populated when the verb was unlocked by a specific piece of leverage. */
   leverageLabel?: string;
   params: Record<string, unknown>;
+  /** Honest odds, for plays the target is allowed to disbelieve. */
+  forecast?: VerbForecast;
+}
+
+/** Never let a broken forecast take the whole verb menu down with it. */
+function safeForecast(v: HackVerb, ctx: VerbContext): VerbForecast | undefined {
+  if (!v.forecast) return undefined;
+  try {
+    return v.forecast(ctx);
+  } catch {
+    return undefined;
+  }
 }
 
 /** Every verb that could be pointed at this node right now, with reasons. */
@@ -1528,14 +1670,36 @@ export function verbsForNode(state: GameState, node: NetworkNode): OfferedVerb[]
  * secrets have unlocked. This function is the profiling loop's payoff: what
  * appears here is a direct function of how deep the dossier goes.
  */
-export function verbsForNpc(state: GameState, target: Npc): OfferedVerb[] {
+export function verbsForNpc(
+  state: GameState,
+  target: Npc,
+  /**
+   * Caller-supplied context merged into every offer — in practice the place the
+   * player has pinned as a destination. Passing it here rather than at invoke
+   * time means the odds shown account for it, so "no destination pinned" is
+   * visible in the forecast instead of being a surprise afterwards.
+   */
+  extraParams: Record<string, unknown> = {},
+): OfferedVerb[] {
   const out: OfferedVerb[] = [];
+
+  const offer = (v: HackVerb, params: Record<string, unknown>, leverageLabel?: string) => {
+    const ctx: VerbContext = { state, target, params };
+    const gated = gate(state, v, { target, params });
+    const availability = gated.ok && v.available ? v.available(ctx) : gated;
+    const forecast = availability.ok ? safeForecast(v, ctx) : undefined;
+    out.push({
+      verb: v,
+      availability,
+      params,
+      ...(leverageLabel ? { leverageLabel } : {}),
+      ...(forecast ? { forecast } : {}),
+    });
+  };
 
   for (const v of VERBS) {
     if (v.targets !== "npc" || v.leverageOnly) continue;
-    const gated = gate(state, v, { target, params: {} });
-    const availability = gated.ok && v.available ? v.available({ state, target, params: {} }) : gated;
-    out.push({ verb: v, availability, params: {} });
+    offer(v, extraParams);
   }
 
   // Leverage-gated verbs, one entry per hook so the parameters come along.
@@ -1544,10 +1708,7 @@ export function verbsForNpc(state: GameState, target: Npc): OfferedVerb[] {
     for (const hook of secret.hooks) {
       const v = BY_ID.get(hook.verb);
       if (!v) continue;
-      const params = { ...(hook.params ?? {}) };
-      const gated = gate(state, v, { target, params });
-      const availability = gated.ok && v.available ? v.available({ state, target, params }) : gated;
-      out.push({ verb: v, availability, leverageLabel: hook.label, params });
+      offer(v, { ...extraParams, ...(hook.params ?? {}) }, hook.label);
     }
   }
 

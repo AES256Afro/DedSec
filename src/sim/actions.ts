@@ -102,9 +102,13 @@ export function nodeVerbs(state: GameState, nodeId: NodeId): OfferedVerb[] {
   return node ? verbsForNode(state, node) : [];
 }
 
-export function npcVerbs(state: GameState, npcId: NpcId): OfferedVerb[] {
+export function npcVerbs(
+  state: GameState,
+  npcId: NpcId,
+  extraParams: Record<string, unknown> = {},
+): OfferedVerb[] {
   const target = state.npcs.get(npcId);
-  return target ? verbsForNpc(state, target) : [];
+  return target ? verbsForNpc(state, target, extraParams) : [];
 }
 
 export function runNodeVerb(

@@ -93,7 +93,16 @@ export interface AdjudicationResult {
  * Score an impulse against a person. Pure and deterministic given `roll`, so
  * the planner UI can show honest odds before you commit to a play.
  */
-export function scoreImpulse(npc: Npc, impulse: Impulse, time: Instant): { belief: number; reason: string } {
+export interface ImpulseScore {
+  /** 0..1 chance they act on it outright. */
+  belief: number;
+  /** Signed, player-facing reasons, strongest first. */
+  notes: string[];
+  /** Terse summary for the event log. */
+  reason: string;
+}
+
+export function scoreImpulse(npc: Npc, impulse: Impulse, time: Instant): ImpulseScore {
   const trait = npc.traits[impulse.hingesOn];
   const polarity = TRAIT_POLARITY[impulse.hingesOn];
   // A shield trait scales belief down as it rises; a hook trait scales it up.
@@ -101,40 +110,51 @@ export function scoreImpulse(npc: Npc, impulse: Impulse, time: Instant): { belie
   let belief = impulse.plausibility * traitFactor;
   const notes: string[] = [];
 
+  const level = trait > 0.66 ? "high" : trait < 0.34 ? "low" : "middling";
+  notes.push(
+    `${polarity > 0 ? (trait > 0.5 ? "−" : "+") : trait > 0.5 ? "+" : "−"} ${level} ${impulse.hingesOn} (${trait.toFixed(2)})`,
+  );
+
   // Procedure-followers verify things regardless of which trait was targeted.
   belief -= npc.traits.diligence * 0.12;
-  if (npc.traits.diligence > 0.7) notes.push("follows procedure");
+  if (npc.traits.diligence > 0.7) notes.push("− follows procedure, will check");
 
   // Abandoning a post is a real cost to them, so the pretext has to be worth it.
   if (onPost(npc, time)) {
     belief -= 0.18;
-    notes.push("is on a post they are accountable for");
+    notes.push("− on a post they are accountable for");
   }
 
   // Stress cuts both ways: frayed people are easier to push and quicker to bolt,
   // but they are also already looking over their shoulder.
   belief += npc.stress * 0.15;
+  if (npc.stress > 0.5) notes.push("+ already frayed");
   belief -= npc.suspicion * 0.45;
-  if (npc.suspicion > 0.4) notes.push("is already suspicious");
+  if (npc.suspicion > 0.4) notes.push("− already suspicious of someone");
 
   // Tech-literate targets discount anything arriving through a device.
   if (impulse.source === "player") {
     belief -= npc.traits.techLiteracy * 0.1;
+    if (npc.traits.techLiteracy > 0.7) notes.push("− spots tampered devices");
   }
 
   belief = Math.max(0.02, Math.min(0.97, belief));
-  return {
-    belief,
-    reason: notes.length > 0 ? notes.join("; ") : `${impulse.hingesOn} ${trait.toFixed(2)}`,
-  };
+  return { belief, notes, reason: notes.join("; ") };
 }
+
+/**
+ * How far past the belief threshold a roll can land and still be hesitation
+ * rather than outright disbelief. Exported so the pre-commit odds readout and
+ * the live roll cannot drift apart.
+ */
+export const DOUBT_BAND = 0.22;
 
 export function adjudicate(npc: Npc, impulse: Impulse, time: Instant, rng: Rng): AdjudicationResult {
   const { belief, reason } = scoreImpulse(npc, impulse, time);
   const roll = rng.next();
   if (roll < belief) return { verdict: "accept", belief, reason };
   // A near miss is hesitation rather than disbelief — they go and check.
-  if (roll < belief + 0.22) return { verdict: "doubt", belief, reason };
+  if (roll < belief + DOUBT_BAND) return { verdict: "doubt", belief, reason };
   return { verdict: "reject", belief, reason };
 }
 

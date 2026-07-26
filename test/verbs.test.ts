@@ -5,8 +5,9 @@ import { at } from "../src/core/time.js";
 import { newGame } from "../src/game.js";
 import { breachNode } from "../src/hack/breach.js";
 import { addTrace, ghostReport, tickTrace } from "../src/hack/trace.js";
-import { VERBS, contextualPlausibility, invokeById, occupantsOf, verbsForNode } from "../src/hack/verbs.js";
+import { VERBS, contextualPlausibility, invokeById, occupantsOf, verbsForNode, verbsForNpc } from "../src/hack/verbs.js";
 import { adjudicate, scoreImpulse } from "../src/npc/behavior.js";
+import { recomputeLayer } from "../src/profile/profiler.js";
 import type { Impulse, Npc } from "../src/npc/types.js";
 import { Rng } from "../src/core/rng.js";
 import type { GameState } from "../src/sim/state.js";
@@ -158,6 +159,81 @@ test("a rejected play leaves the target suspicious and on record", () => {
   assert.ok(
     state.log.all().some((e) => e.kind === "npc.impulse_rejected"),
     "and it should be on the record",
+  );
+});
+
+test("the odds shown before committing are the odds actually rolled against", () => {
+  // The forecast is only worth showing if it cannot drift from the live path.
+  // Both go through scoreImpulse, and this pins that they agree exactly.
+  const state = newGame({ seed: "forecast", startAt: at(0, 12, 0) });
+  state.player.hackRange = 100_000;
+  const person = [...state.npcs.values()].find((n) => n.phoneNodeId && n.condition === "normal")!;
+  breachUntilOpen(state, person.phoneNodeId!);
+  recomputeLayer(state, person);
+
+  const offered = verbsForNpc(state, person).find((o) => o.verb.id === "fake_app_alert")!;
+  assert.ok(offered.forecast, "a fallible play must forecast");
+  const predicted = offered.forecast!.belief;
+
+  const outcome = invokeById(state, "fake_app_alert", { target: person, params: offered.params });
+  assert.ok(outcome.ok, outcome.message);
+  assert.ok(
+    Math.abs((outcome.belief ?? -1) - predicted) < 1e-9,
+    `forecast ${predicted} did not match the delivered ${outcome.belief}`,
+  );
+
+  const queued = person.impulses[0]!;
+  const live = scoreImpulse(person, queued, state.time).belief;
+  assert.ok(Math.abs(live - predicted) < 1e-9, "and the queued impulse must score the same");
+});
+
+test("the forecast reacts to the same context the roll does", () => {
+  const state = newGame({ seed: "forecast2", startAt: at(0, 12, 0) });
+  state.player.hackRange = 100_000;
+  const person = [...state.npcs.values()].find((n) => n.phoneNodeId && n.condition === "normal")!;
+  breachUntilOpen(state, person.phoneNodeId!);
+  recomputeLayer(state, person);
+
+  const onTarget = verbsForNpc(state, person, { interest: person.interests[0] }).find(
+    (o) => o.verb.id === "fake_app_alert",
+  )!;
+  const offTarget = verbsForNpc(state, person, { interest: "competitive ferret grooming" }).find(
+    (o) => o.verb.id === "fake_app_alert",
+  )!;
+  assert.ok(onTarget.forecast!.belief > offTarget.forecast!.belief);
+
+  person.suspicion = 0.8;
+  const rattled = verbsForNpc(state, person, { interest: person.interests[0] }).find(
+    (o) => o.verb.id === "fake_app_alert",
+  )!;
+  assert.ok(rattled.forecast!.belief < onTarget.forecast!.belief, "burning someone must show up in the odds");
+  assert.ok(
+    rattled.forecast!.notes.some((n) => n.includes("suspicious")),
+    "and the readout must say why",
+  );
+});
+
+test("only fallible plays forecast — physical effects do not pretend to be uncertain", () => {
+  const state = newGame({ seed: "nofore" });
+  for (const v of VERBS) {
+    if (v.forecast) {
+      assert.equal(v.targets, "npc", `${v.id} forecasts but does not target a person`);
+    }
+  }
+  const hvac = VERBS.find((v) => v.id === "hvac_surge")!;
+  assert.equal(hvac.forecast, undefined, "a stimulus has no odds to show");
+  void state;
+});
+
+test("breaching a handset identifies its owner", () => {
+  const state = newGame({ seed: "identify" });
+  state.player.hackRange = 100_000;
+  const person = [...state.npcs.values()].find((n) => n.phoneNodeId)!;
+  assert.ok(!person.revealedFields.has("identity"), "unknown before you touch anything");
+  breachUntilOpen(state, person.phoneNodeId!);
+  assert.ok(
+    person.revealedFields.has("identity"),
+    "you cannot read someone's phone and still not know who they are",
   );
 });
 
