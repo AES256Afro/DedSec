@@ -5,6 +5,9 @@
  * compiled modules out of `dist/web/`. Pass a directory to serve that instead —
  * `node scripts/serve.mjs site` serves the built bundle exactly as a host would,
  * which is what CI points the browser smoke test at.
+ *
+ *   /               the street client
+ *   /terminal.html  the field terminal
  */
 
 import { createServer } from "node:http";
@@ -32,7 +35,15 @@ const server = createServer(async (req, res) => {
   try {
     const url = new URL(req.url ?? "/", `http://${req.headers.host}`);
     let path = decodeURIComponent(url.pathname);
-    if (path === "/") path = SERVING_SITE ? "/index.html" : "/web/index.html";
+    // The built site is served *as* the root; the dev server is serving the
+    // repo, so both pages need aliasing into web/ to keep one set of URLs
+    // working in both places.
+    if (!SERVING_SITE) {
+      if (path === "/") path = "/web/index.html";
+      else if (path === "/terminal.html") path = "/web/terminal.html";
+    } else if (path === "/") {
+      path = "/index.html";
+    }
 
     // Contain everything under the repo root — no traversal out of it.
     const filePath = join(ROOT, normalize(path));

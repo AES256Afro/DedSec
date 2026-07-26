@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DedNec — ctOS field terminal</title>
+    <!-- Absolute paths: the server maps "/" to this file, so relative URLs
+         would resolve against the root rather than against /web/. -->
+    <link rel="stylesheet" href="/web/style.css" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ctext y='13' font-size='13' fill='%2335e0c8'%3E%E2%96%9A%3C/text%3E%3C/svg%3E" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="mark">▚</span>
+        <span class="wordmark">DedNec</span>
+        <span class="sub">ctOS field terminal</span>
+        <a class="sub-link" href="./">← the street</a>
+      </div>
+
+      <div class="clock">
+        <span id="clock-time">08:10</span>
+        <span id="clock-day" class="muted">Day 1</span>
+      </div>
+
+      <div class="speed" role="group" aria-label="Simulation speed">
+        <button data-speed="0" class="speed-btn">❚❚</button>
+        <button data-speed="1" class="speed-btn is-active">1×</button>
+        <button data-speed="4" class="speed-btn">4×</button>
+        <button data-speed="16" class="speed-btn">16×</button>
+      </div>
+
+      <div class="trace">
+        <label>ctOS trace <span id="trace-word" class="muted">quiet</span></label>
+        <div class="meter"><div id="trace-fill" class="meter-fill"></div></div>
+      </div>
+
+      <div class="topbar-actions">
+        <button id="btn-drone" class="ghost">Deploy drone</button>
+        <label class="floor">
+          Floor
+          <select id="floor-select"></select>
+        </label>
+      </div>
+    </header>
+
+    <main class="layout">
+      <aside class="col col-left">
+        <section class="panel" id="panel-missions">
+          <h2>Contracts</h2>
+          <div id="mission-list" class="scroll"></div>
+        </section>
+        <section class="panel grow" id="panel-feed">
+          <h2>
+            Feed
+            <span class="filters" id="feed-filters"></span>
+          </h2>
+          <ul id="feed" class="scroll feed"></ul>
+        </section>
+      </aside>
+
+      <section class="col col-map">
+        <canvas id="map"></canvas>
+        <div class="map-legend" id="map-legend"></div>
+        <div class="map-hint" id="map-hint">
+          Click to inspect · double-click the ground to walk · drag to pan · scroll to zoom ·
+          <b>S</b> sweep profiles · <b>D</b> drone · <b>[ ]</b> floors · <b>space</b> pause
+        </div>
+      </section>
+
+      <aside class="col col-right">
+        <section class="panel" id="panel-inspector">
+          <h2 id="inspector-title">Nothing selected</h2>
+          <div id="inspector" class="scroll"></div>
+        </section>
+        <section class="panel" id="panel-network">
+          <h2>In reach <span id="reach-count" class="muted"></span></h2>
+          <div id="network" class="scroll"></div>
+        </section>
+      </aside>
+    </main>
+
+    <div id="toast" class="toast" hidden></div>
+    <script type="module" src="/dist/web/main.js"></script>
+  </body>
+</html>

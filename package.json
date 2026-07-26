@@ -13,11 +13,15 @@
     "sim": "npm run build && node dist/src/cli/headless.js",
     "build:site": "npm run build && node scripts/build-site.mjs",
     "playtest": "node scripts/playtest.mjs",
-    "smoke": "node scripts/smoke.mjs"
+    "smoke": "node scripts/smoke-street.mjs && node scripts/smoke-terminal.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.20.1",
+    "@types/three": "^0.170.0",
     "playwright": "1.49.0",
     "typescript": "^5.6.3"
+  },
+  "dependencies": {
+    "three": "^0.170.0"
   }
 }

@@ -9,12 +9,13 @@
  *   4. ambient systems     — orders placed, parcels dispatched;
  *   5. social & security   — suspicion spreads, investigations bite;
  *   6. trace decay;
- *   7. missions            — objectives re-evaluated against the new state.
+ *   7. missions & cases    — both re-evaluated against the new state.
  *
  * A tick is one world-minute. Sub-minute fractions exist only inside verb
  * costs, which advance `state.time` directly.
  */
 
+import { refreshCases } from "../case/cases.js";
 import { formatTime } from "../core/time.js";
 import { tickTrace } from "../hack/trace.js";
 import { deliver } from "../hack/verbs.js";
@@ -383,8 +384,10 @@ export function step(state: GameState, minutes = 1): void {
   // 6. Trace.
   tickTrace(state, minutes);
 
-  // 7. Missions.
+  // 7. Missions and cases — both are predicates over the state the tick just
+  //    produced, so they run last and neither can be observed mid-update.
   missionTicker?.(state);
+  refreshCases(state);
 }
 
 /** Advance a whole number of world-minutes, one tick at a time. */
