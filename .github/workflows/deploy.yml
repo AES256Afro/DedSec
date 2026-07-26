@@ -37,7 +37,12 @@ jobs:
 
       - run: npm run build:site
 
+      # `enablement` turns Pages on for the repository if it is not already,
+      # rather than failing the run and requiring someone to click through
+      # Settings first. The `pages: write` permission above is what allows it.
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true
 
       - uses: actions/upload-pages-artifact@v3
         with:
