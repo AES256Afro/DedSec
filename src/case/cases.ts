@@ -25,8 +25,14 @@ import type { GameState } from "../sim/state.js";
 import type { NodeId } from "../world/types.js";
 import type { CaseKind, CaseRecord, CaseResolution, Ledger, ResolutionKind } from "./types.js";
 
-/** Roughly this share of the population is entangled in something. */
-const CASE_DENSITY = 0.17;
+/**
+ * Roughly this share of the population is entangled in something.
+ *
+ * Tuned down when the city grew from seventy people to nearly two hundred: at
+ * the old rate every third person on the pavement carried a flag, and a flag
+ * that common stops being something you notice.
+ */
+const CASE_DENSITY = 0.085;
 
 interface CaseTemplate {
   kind: CaseKind;

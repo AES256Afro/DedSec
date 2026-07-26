@@ -185,12 +185,31 @@ test("Ghost Shift can be completed", () => {
 
   // He is the most sceptical person in the district, so lead with whatever his
   // own secrets unlocked and stop pushing the moment he starts doubting.
+  //
+  // *Which* lure matters, and picking the first one in the array is how a bot
+  // loses to a chief with 0.96 diligence. The objective is to get him off the
+  // site, so prefer the hooks that take somebody somewhere — an interview, an
+  // auction to collect, a payout — over the ones that merely say something.
+  const PULLS_HIM_OUT = [
+    "forge_interview_invite",
+    "forge_auction_win",
+    "dangle_payout",
+    "forge_family_emergency",
+    "forge_clinic_reminder",
+    "forge_summons",
+  ];
+  const bestHook = () => {
+    const hooks = chief.secrets.filter((s) => s.revealed).flatMap((s) => s.hooks);
+    for (const verb of PULLS_HIM_OUT) {
+      const found = hooks.find((h) => h.verb === verb);
+      if (found) return found;
+    }
+    return hooks.find((h) => h.verb.startsWith("forge_"));
+  };
+
   for (let round = 0; round < 60 && runtime.status !== "complete"; round++) {
     if (chief.suspicion < 0.3 && !chief.activeImpulse && chief.condition === "normal") {
-      const hook = chief.secrets
-        .filter((s) => s.revealed)
-        .flatMap((s) => s.hooks)
-        .find((h) => h.verb.startsWith("forge_") || h.verb === "dangle_payout");
+      const hook = bestHook();
       if (hook) invokeById(state, hook.verb, { target: chief, params: hook.params ?? {} });
       else invokeById(state, "fake_app_alert", { target: chief, params: { interest: chief.interests[0] } });
     }

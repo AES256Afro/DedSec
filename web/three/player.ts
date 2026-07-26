@@ -8,15 +8,18 @@
  * to you — therefore keeps working untouched, and the 3D layer stays a *view*
  * with a controller attached rather than a second world model.
  *
- * The one rule this imposes on the city: buildings are solid. You are outside,
- * looking at a street. That is the whole game the casual loop wants, and it is
- * why collision here is four axis-aligned boxes and no more.
+ * Collision is axis-aligned boxes and nothing cleverer, which is enough for a
+ * city of rectangles. Interiors are the one wrinkle: inside a public room the
+ * question "where am I" is answered from that room's own place list rather than
+ * from the whole map, which is what stops you being snapped into a staff room
+ * by standing near its wall.
  */
 
 import * as THREE from "three";
 
 import type { GameState } from "../../src/sim/state.js";
-import { nearestOutdoorPlace } from "./world.js";
+import { placeAt } from "./world.js";
+import type { Interior } from "./world.js";
 
 const EYE_HEIGHT = 1.68;
 /** Shoulder width, near enough. Keeps you off the glass. */
@@ -39,6 +42,7 @@ export class PlayerController {
   private pitch = 0;
   private keys = new Set<string>();
   private colliders: THREE.Box3[] = [];
+  private interiors: Interior[] = [];
   private bounds = new THREE.Box3();
   private lastSync = new THREE.Vector3(Infinity, 0, Infinity);
   private forward = new THREE.Vector3();
@@ -55,8 +59,9 @@ export class PlayerController {
     this.wire();
   }
 
-  /** Colliders and the walkable envelope, both from the built city. */
-  setWorld(colliders: THREE.Box3[], bounds: THREE.Box3): void {
+  /** Colliders, the walkable envelope, and the rooms you may enter. */
+  setWorld(colliders: THREE.Box3[], bounds: THREE.Box3, interiors: Interior[] = []): void {
+    this.interiors = interiors;
     this.colliders = colliders.map((box) =>
       // Inflate once here rather than testing a radius every frame.
       box.clone().expandByVector(new THREE.Vector3(BODY_RADIUS, 0, BODY_RADIUS)),
@@ -167,16 +172,16 @@ export class PlayerController {
   /**
    * Hand our continuous position back to the discrete world.
    *
-   * Snapping to the nearest outdoor place is the entire bridge. It clears any
-   * pending walk order, because a player with hands on the keyboard has just
-   * overruled whatever the pathfinder was doing.
+   * Snapping to the nearest place is the entire bridge. It clears any pending
+   * walk order, because a player with hands on the keyboard has just overruled
+   * whatever the pathfinder was doing.
    */
   private syncToSim(force: boolean): void {
     const position = this.camera.position;
     if (!force && this.lastSync.distanceToSquared(position) < RESYNC_DISTANCE ** 2) return;
     this.lastSync.copy(position);
 
-    const place = nearestOutdoorPlace(this.state, position.x, position.z);
+    const place = placeAt(this.state, this.interiors, position.x, position.y, position.z);
     if (!place || place.id === this.state.player.placeId) return;
     this.state.player.placeId = place.id;
     this.state.player.drone.placeId = place.id;

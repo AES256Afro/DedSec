@@ -58,13 +58,14 @@ html, body {
 
 .ctos-card__inner {
   position: relative;
-  min-width: 172px;
-  max-width: 300px;
-  padding: 7px 10px 8px;
-  background: rgba(10, 15, 21, 0.82);
+  min-width: 240px;
+  max-width: 340px;
+  padding: 9px 12px 10px;
+  background: rgba(8, 12, 18, 0.9);
   border: 1px solid var(--line);
-  border-left: 2px solid var(--ink-faint);
-  backdrop-filter: blur(3px);
+  border-left: 2px solid var(--accent-dim);
+  backdrop-filter: blur(4px);
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.45);
 }
 
 /* The stem, so a card is visibly attached to a person rather than hovering. */
@@ -87,11 +88,41 @@ html, body {
 
 .ctos-card__inner.is-harm { border-left-color: var(--bad); }
 .ctos-card__inner.is-need { border-left-color: var(--warn); }
-.ctos-card__inner.is-focused {
-  background: rgba(10, 15, 21, 0.95);
+.ctos-card__inner.is-target {
   border-color: var(--accent-dim);
-  box-shadow: 0 0 0 1px rgba(53, 224, 200, 0.14), 0 8px 30px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 0 0 1px rgba(53, 224, 200, 0.16), 0 10px 34px rgba(0, 0, 0, 0.55);
 }
+
+/* What you can do about them, keyed. The card is the interface. */
+.ctos-actions {
+  margin-top: 8px;
+  padding-top: 7px;
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 5px;
+}
+.ctos-action {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  gap: 2px 8px;
+  align-items: baseline;
+  font-size: 11px;
+}
+.ctos-action kbd {
+  grid-row: span 2;
+  font: inherit;
+  font-size: 10px;
+  text-align: center;
+  color: var(--accent);
+  border: 1px solid var(--accent-dim);
+  border-radius: 2px;
+  padding: 1px 0;
+}
+.ctos-action b { font-weight: 600; color: var(--ink); }
+.ctos-action span { color: var(--ink-dim); }
+.ctos-action.is-help kbd { color: var(--good); border-color: var(--good); }
+.ctos-action.is-expose kbd { color: var(--bad); border-color: var(--bad); }
+.ctos-action.is-walk_away kbd { color: var(--ink-faint); border-color: var(--line); }
 
 .ctos-row { display: flex; align-items: baseline; gap: 7px; }
 .ctos-name { font-weight: 600; letter-spacing: 0.02em; }
@@ -149,6 +180,19 @@ html, body {
   border-radius: 50%;
   background: rgba(219, 230, 240, 0.55);
   pointer-events: none;
+  transition: width 90ms, height 90ms, margin 90ms, border-color 90ms;
+}
+
+/* Over a person the dot opens into a reticle, so you know the card is about
+   to be about somebody before it arrives. */
+body.is-aiming .crosshair {
+  width: 22px;
+  height: 22px;
+  margin: -11px 0 0 -11px;
+  background: transparent;
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  box-shadow: 0 0 10px rgba(53, 224, 200, 0.35);
 }
 
 .hud { position: fixed; inset: 0; pointer-events: none; padding: 14px 18px; }

@@ -25,8 +25,12 @@ declare global {
       select?: (kind: "place" | "npc" | "node", id: string) => void;
       /** Street client: stand at a world position facing a point; returns the place. */
       goTo?: (x: number, z: number, lookAtX?: number, lookAtZ?: number) => string | undefined;
+      /** Street client: aim at somebody outdoors; returns their name. */
+      aimAtSomebody?: () => string | null;
+      /** Street client: the public rooms you can walk into, and where their doors are. */
+      rooms?: () => Array<{ name: string; approach: [number, number]; inside: [number, number]; placeIds: string[] }>;
       /** Street client: renderer counters and overlay counts, for the smoke test. */
-      stats?: () => { triangles: number; calls: number; cards: number; profiled: number; optical: number };
+      stats?: () => { triangles: number; calls: number; cards: number; profiled: number; optical: number; at: [number, number] };
     };
   }
 }

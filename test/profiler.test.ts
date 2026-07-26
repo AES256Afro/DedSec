@@ -95,9 +95,19 @@ test("secrets turn into verbs — the whole loop in one assertion", () => {
   const after = verbsForNpc(state, person);
   const unlocked = after.filter((o) => o.leverageLabel);
   assert.ok(unlocked.length > 0, "surfacing a secret must unlock at least one new play");
+  assert.ok(
+    unlocked.some((o) => o.verb.leverageOnly && !before.includes(o.verb.id)),
+    "at least one play must be one you could not have made before",
+  );
+
+  // Not every hook unlocks a *verb*. An affair points at `forge_message`, which
+  // is offered against anybody — what the secret supplies is the parameter:
+  // *who* to forge as, and that they will be believed. A hook whose value is
+  // its arguments rather than its verb id is working as designed, and an
+  // earlier version of this test asserted otherwise and passed only because of
+  // which person the population generator happened to produce first.
   for (const offered of unlocked) {
-    assert.ok(!before.includes(offered.verb.id) || offered.leverageLabel, "leverage verbs carry their hook label");
-    assert.ok(offered.verb.leverageOnly, "only leverage-gated verbs should arrive this way");
+    assert.ok(offered.leverageLabel, "a hook-derived play must say which fact unlocked it");
   }
 });
 
