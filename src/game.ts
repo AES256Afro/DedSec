@@ -2,6 +2,7 @@
  * Game bootstrap: seed in, running world out.
  */
 
+import { installCases } from "./case/cases.js";
 import { EventLog } from "./core/events.js";
 import { Rng } from "./core/rng.js";
 import { at } from "./core/time.js";
@@ -66,12 +67,15 @@ export function newGame(options: NewGameOptions = {}): GameState {
     orders: new Map(),
     schedule: [],
     missions: [],
+    cases: [],
+    ledger: { helped: 0, exposed: 0, warned: 0, walkedPast: 0, scanned: 0 },
     counter: 0,
   };
 
   warmStart(state);
   seedMissionProps(state);
   installMissions(state);
+  installCases(state);
 
   state.log.emit(state.time, {
     channel: "world",

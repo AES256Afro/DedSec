@@ -286,9 +286,155 @@ designed and the test playing badly. It now waits between attempts, presses
 harder only while the gap is actually open, and never pushes someone already
 past 0.35. Which is, usefully, also the advice a player needs.
 
+## The casual loop, and why it needed a second client
+
+The contract board is a good game and the wrong opening. It is a sequence of
+jobs with briefs, constraints and grades — pressure from the first minute. What
+the sandbox turned out to be missing was a reason to simply *be* in the city.
+
+### Cases are pairs
+
+A case is something you notice rather than something you accept. The rule that
+makes it work is that **every case has two people in it**: one carrying the
+harm, one carrying the cost.
+
+A lone "bad person" is a label. You read it, you agree, and nothing happens. A
+bad person *attached to somebody they are hurting* is a situation, and a
+situation is the only thing a player can be moved by. So `shakedown` is not a
+loan shark, it is a loan shark **and the person four months behind**; `squeeze`
+is not a slum landlord, it is a landlord **and the tenant who has logged the
+same repair request since spring**.
+
+`undertow` exists to keep that from becoming a morality tale. Nobody is doing it
+to them. They have not slept in a month, and there is no version of this week
+where it gets easier. If every need implies a villain, the city stops being a
+place and becomes a list of targets.
+
+### Read out of the city, not sprinkled on it
+
+Every template requires a configuration the population generator already
+produced: someone with a gambling secret, a manager who already has a report, an
+org with somebody skimming it. Where the case creates a relationship — creditor,
+dealer, landlord, ex — it writes it into `npc.relationships` rather than keeping
+a private note.
+
+That is not tidiness. It means the dossier lists the tie, the verb layer can act
+on it, and suspicion propagates along it, all without a single one of those
+systems knowing that cases exist.
+
+**A bug this caught.** `coercion` needs a manager, and it never once fired. The
+generator was linking `pair(manager, report, "manager")`, but a relationship's
+`kind` names the *other* party's role — the dossier renders it as "manager ·
+Ines Abara". Every dossier in the game had been listing its subject's boss as
+their report, and nobody noticed until a case template tried to look one up.
+
+### Nothing here can be failed
+
+`resolveCase` cannot fail. Everything else in this game can be doubted, refused,
+traced or seen through; this is the one surface where deciding to do something
+*is* doing it.
+
+That is not softness, it is the genre. A casual loop with a failure state is not
+a casual loop, and the interesting question was never "can you" — it was "will
+you, and which way". Help quietly, expose the person doing it, warn the person
+it is happening to, or keep walking. Walking away is a listed option on every
+case, costs nothing and counts for nothing, and is a real answer.
+
+Progress is a ledger — `7 helped · 2 exposed · 61 profiled` — with no
+denominator and no completion percentage. There is nothing to clear.
+
+## Three dimensions, one simulation
+
+The street client is a *view*. It contains no game rules; every mutation goes
+through the same `src/` functions the tests drive.
+
+The whole port rested on one property of the simulation: it was already
+coordinate-first. Places carry metres and a floor index because that is what a
+top-down map needed, and it turns out to be exactly what an extrusion needs too.
+Sim `x` is world X, sim `y` is world Z, a floor is a height. Nothing in `src/`
+changed to make the city three-dimensional.
+
+### Continuous player, discrete world
+
+The sim moves people between graph nodes. The player does not — they move in
+metres, and every few metres the client asks which outdoor place they are
+nearest and hands that answer back. Line of sight, radio range, who is standing
+next to you: all of it keeps working untouched.
+
+### The cards stay DOM
+
+Watch Dogs draws them the same way and for the same reason. Text in a 3D scene
+either fights the renderer or goes illegible at distance, and everything the
+profiler already knows how to render is HTML. The 3D layer supplies one number
+per person — where they are on screen — and the card is a div that gets told
+where to sit. Which is most of why this was a port rather than a rewrite.
+
+Cards stack rather than overlap: nearest keeps its spot and everyone behind it
+slides upward, which is both readable and a correct depth cue.
+
+### ctOS reads handsets, not faces
+
+`visibleNpcs` answers "who can you see", which is right for anything involving a
+lens or a witness. The street needed a different question. At eleven in the
+morning two-thirds of the city is indoors, and a client that could only profile
+what it could see was a client with five people in it.
+
+So `profilableNpcs` grants layer 0 to everyone in range regardless of walls — a
+name, a job, an income and a quirk, all public records, surfaced by their own
+devices. Every layer above it still costs a breach. People behind a wall get a
+dashed card so the overlay never pretends you are looking at someone you are
+not.
+
+### Infill
+
+The simulation models eight buildings across roughly a square mile. On a
+top-down map that is a city; at eye level it is a business park. So the gaps
+between the simulated buildings get filled with blocks that are scenery and
+nothing else — no doors, no rooms, no network, nobody inside — laid out around
+the real streets and the real buildings.
+
+Only the eight buildings the game is actually played in are labelled, which
+makes the labels a navigation aid and an honesty marker at the same time.
+
+Two tuning notes worth keeping, because both produced a wrong-looking city from
+correct-looking code:
+
+- **A cell that straddles a street is dropped whole**, so the infill grid's own
+  coarseness *becomes* the street width. At 44-metre cells a twenty-metre road
+  came out over a hundred metres wide and the place read as a ring road.
+- **Dark ground, lit facades.** Up-facing surfaces catch the sky light and
+  side-facing ones do not, so a pavement the same grey as a wall reads
+  *brighter* than the wall and flattens the entire street. The first pass used
+  the terminal's panel greys directly and rendered, correctly and uselessly,
+  black: a Lambert surface multiplies its colour by the light, and a 10%-grey
+  building under a 16%-grey ambient is 1.6% grey.
+
+### What the smoke test can and cannot see
+
+A 3D client fails in ways a unit test structurally cannot: three fails to
+resolve through the import map, the canvas gets no GL context, the crowd renders
+at the origin, cards project behind the camera.
+
+One trap worth recording. The obvious check — read the canvas back and count
+non-background pixels — always fails, because a WebGL canvas without
+`preserveDrawingBuffer` reads back blank once the frame has been composited. A
+perfectly good scene scores zero. Asking the renderer what it drew
+(`renderer.info.render.triangles`) is both cheaper and actually true.
+
+The second trap was the test asserting on where a free walk ended up. It passed
+and failed on alternate runs depending on which way the player happened to be
+facing. It now stands somewhere there provably *is* somebody and looks straight
+at them.
+
 ## Deliberate omissions
 
 No save/load, no audio, no skill tree beyond a single stub, no mobile layout. The
 four contracts are a vertical slice. The interesting extension is not more verbs
 but more *order kinds* and more *secret templates*, since both multiply against
-the existing verb set rather than adding to it linearly.
+the existing verb set rather than adding to it linearly — and now also more
+*case templates*, which multiply against the population generator the same way.
+
+The street client is outdoors only. Buildings are solid; going inside one is
+still the field terminal's job. Interiors would need the graph's indoor places
+extruded and doors made traversable in 3D, which is a real piece of work rather
+than a missing constant.

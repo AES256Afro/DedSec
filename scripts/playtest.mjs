@@ -1,7 +1,7 @@
 /**
- * Playtest harness.
+ * Playtest harness — the field terminal.
  *
- * Drives the real client the way a player would and prints what they would see
+ * Drives the terminal client the way a player would and prints what they would see
  * at each step: which contracts are legible, what the first ten minutes offer,
  * whether the tutorial's objectives are discoverable without reading the source.
  *
@@ -27,7 +27,7 @@ const browser = await chromium.launch(launchOptions());
 const page = await browser.newPage({ viewport: { width: 1600, height: 900 } });
 page.on("pageerror", (e) => console.log(`  !! pageerror: ${e.message}`));
 
-await page.goto(`${BASE}/?seed=playtest`, { waitUntil: "networkidle" });
+await page.goto(`${BASE}/terminal.html?seed=playtest`, { waitUntil: "networkidle" });
 await page.waitForTimeout(700);
 
 const section = (title) => console.log(`\n── ${title} ${"─".repeat(Math.max(0, 58 - title.length))}`);
