@@ -69,6 +69,6 @@ const server = createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`\n  Dedsec running at http://localhost:${PORT}/ (serving ${ROOT})`);
+  console.log(`\n  DedSec running at http://localhost:${PORT}/ (serving ${ROOT})`);
   console.log(`  Try a different city with http://localhost:${PORT}/?seed=marina\n`);
 });
