@@ -334,6 +334,7 @@ function stepMovement(npc: Npc, ctx: BehaviourContext, minutes: number): void {
   if (npc.transit.t >= 1) {
     npc.placeId = npc.transit.toPlaceId;
     npc.transit = undefined;
+    leaveDoorOpen(edge, ctx);
     // Devices on their person travel with them; anything they put down or
     // forgot stays where it was, which is the whole point of the phone play.
     for (const nodeId of npc.carrying) {
@@ -341,6 +342,36 @@ function stepMovement(npc: Npc, ctx: BehaviourContext, minutes: number): void {
       if (carried) carried.placeId = npc.placeId;
     }
   }
+}
+
+/**
+ * How long a mechanical door stays unlocked after someone walks through it.
+ *
+ * Tuned to a *planning* window rather than a reflex one. The Back Room contract
+ * asks you to arrange for the keyholder to be elsewhere and for nobody to be
+ * watching the gap — two separate manipulations that have to overlap. At four
+ * minutes those could not overlap at all: the only person who ever opens that
+ * door is the manager, and they are still crossing the bar on their way out
+ * when it swings shut, so the room was unenterable in practice even after it
+ * became enterable in principle.
+ */
+export const MECHANICAL_RELOCK_MINUTES = 25;
+
+/**
+ * Nobody re-locks behind themselves.
+ *
+ * A mechanical door has no lock to pick and no node to breach, so the only way
+ * a player gets through one is the gap somebody with a key leaves. That makes
+ * "arrange for the person with the key to be somewhere else" a real play rather
+ * than flavour text — and it is the reason a staffed back room is enterable at
+ * all while an unstaffed one is not.
+ */
+function leaveDoorOpen(edge: Edge, ctx: BehaviourContext): void {
+  if (!edge.doorId) return;
+  const door = ctx.graph.doors.get(edge.doorId);
+  if (!door || door.lock !== "mechanical") return;
+  door.locked = false;
+  door.relockAt = ctx.time + MECHANICAL_RELOCK_MINUTES;
 }
 
 /* --------------------------------------------------------------- main tick */

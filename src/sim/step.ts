@@ -314,6 +314,21 @@ function collectLooseItems(state: GameState): void {
   }
 }
 
+/**
+ * Mechanical doors somebody left open swing shut again after a while.
+ *
+ * It is the whole opportunity on a door with no lock to hack, so it has to be
+ * long enough to plan around and short enough that you cannot open it in the
+ * morning and stroll in at midnight.
+ */
+function swingDoorsShut(state: GameState): void {
+  for (const door of state.city.graph.doors.values()) {
+    if (door.relockAt === undefined || door.relockAt > state.time) continue;
+    door.relockAt = undefined;
+    door.locked = true;
+  }
+}
+
 /* -------------------------------------------------------------- main step */
 
 export type MissionTicker = (state: GameState) => void;
@@ -354,6 +369,7 @@ export function step(state: GameState, minutes = 1): void {
   // 3. Player.
   stepPlayer(state, minutes);
   collectLooseItems(state);
+  swingDoorsShut(state);
 
   // 4. Ambient city traffic.
   maybePlaceFoodOrders(state);
