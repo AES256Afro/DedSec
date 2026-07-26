@@ -216,6 +216,30 @@ asserted:
   set by a passive scan, so a fully breached handset could still render as
   "UNIDENTIFIED". Layer 1 now implies it.
 
+## What playtesting caught
+
+`scripts/playtest.mjs` drives the real client the way a player would and prints
+what they would actually see: what the opening screen offers, whether the first
+device they click explains itself, how far ten minutes of ordinary play gets
+them. It is not pass/fail — it is a read-out for judging *friction*, which unit
+tests are structurally unable to see.
+
+The first run found two things, both invisible from the code:
+
+- **The most useful device on the street read as a dead end.** The first thing a
+  new player clicks is the junction box, and its panel said "Nothing applies
+  here" — technically true, since a relay's only capability is `route`, and
+  completely misleading, since breaching it is the single best opening move.
+  Infrastructure nodes now say what they are *for*.
+- **The reach list buried everything actionable.** It sorted breached devices to
+  the top, so the longer you played the further you had to scroll to find
+  anything you could still take. Flipping it — nearest-unbreached first, opened
+  ones in a labelled group underneath — tripled how many people the same ten
+  minutes of play profiled, from one to three.
+
+Neither was a bug in the sense a test could assert. Both were the difference
+between a systemic game and an opaque one.
+
 ## Deliberate omissions
 
 No save/load, no audio, no skill tree beyond a single stub, no mobile layout. The

@@ -434,7 +434,7 @@ class App {
     const selection = this.map.selection;
     if (!selection) {
       this.el.inspectorTitle.textContent = "Nothing selected";
-      this.el.inspector.innerHTML = `<p class="locked">Click anyone on the map to start a profile. Shift-click or double-click the ground to walk there.</p>`;
+      this.el.inspector.innerHTML = `<p class="locked">Press <b>S</b> to profile everyone in sight, then click one of them. Double-click the ground to walk there.</p>`;
       return;
     }
 
