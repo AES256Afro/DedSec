@@ -12,6 +12,8 @@ import * as THREE from "three";
 
 import type { GameState } from "../../src/sim/state.js";
 import type { Building, District, Place } from "../../src/world/types.js";
+import { buildInteriors, emptyInteriors, flushInteriors, roomAt } from "./interior.js";
+import type { BuiltInteriors, FloorPlan } from "./interior.js";
 
 export const FLOOR_HEIGHT = 3.6;
 
@@ -48,8 +50,8 @@ export interface CityMeshes {
   colliders: THREE.Box3[];
   /** Buildings the simulation actually models, for the navigation labels. */
   landmarks: Array<{ name: string; position: THREE.Vector3 }>;
-  /** Rooms open to the public, which are the ones you can walk into. */
-  interiors: Interior[];
+  /** Every floor of every building the simulation models. */
+  interiors: BuiltInteriors;
   /**
    * Everything that switches on after dark, with its own range — a streetlight
    * bulb and the pool of light it throws want very different numbers, and a
@@ -178,160 +180,44 @@ function addDistrict(root: THREE.Group, district: District): void {
   root.add(mesh);
 }
 
-/**
- * A room you can walk into.
- *
- * The client needs two things about an interior: the volume, so it knows when
- * you are inside one, and which places the simulation will let you stand in
- * while you are. Only `public` rooms qualify, which is not a simplification —
- * it is the access model. A lobby, a café floor, a bar, a clinic waiting room
- * and a shop floor are the rooms anybody may walk into; everything behind them
- * is semi, staff or restricted and still has to be earned.
- */
-export interface Interior {
-  buildingId: string;
-  name: string;
-  /** Walkable volume. Being inside it is how the client knows you are indoors. */
-  bounds: THREE.Box3;
-  /** Ground-floor public places you can be snapped to in here. */
-  placeIds: string[];
-  /** The pavement outside the door, and the spot just inside it. */
-  approach: THREE.Vector3;
-  entrance: THREE.Vector3;
-}
-
 /** Wall thickness, and the width of a doorway. */
 const WALL = 0.5;
-const DOORWAY = 5;
-/** Eye height, so entrance markers land where a camera would. */
-const EYE = 1.68;
 
+/**
+ * The shell of a building the simulation models.
+ *
+ * The interior is `interior.ts`'s job now — every room on every floor, built
+ * from the blueprint's own positions and the graph's own doors. What is left
+ * here is what you see from the street: the windows, and a brighter band at
+ * pavement level so the base does not vanish into the road.
+ */
 function addBuilding(
   root: THREE.Group,
   state: GameState,
   building: Building,
   colliders: THREE.Box3[],
   lit: LitSurface[],
-  interiors: Interior[],
+  interiors: BuiltInteriors,
   rng: () => number,
 ): void {
-  const height = building.floors * FLOOR_HEIGHT;
-  const bx = building.x;
-  const bz = building.y;
-  const bw = building.width;
-  const bd = building.depth;
-
   const glass = facadeWindows(building, rng);
   lit.push({ material: glass.material as THREE.Material, day: 0.09, night: 0.8 });
   root.add(glass);
 
-  const solid = (x0: number, z0: number, x1: number, z1: number, y0: number, y1: number, colour: number) => {
-    if (x1 - x0 < 0.05 || z1 - z0 < 0.05 || y1 - y0 < 0.05) return;
-    const mesh = box(x1 - x0, y1 - y0, z1 - z0, colour);
-    mesh.position.set((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    root.add(mesh);
-    colliders.push(new THREE.Box3(new THREE.Vector3(x0, y0, z0), new THREE.Vector3(x1, y1, z1)));
-  };
+  const skirt = box(building.width + 0.6, 1.2, building.depth + 0.6, PALETTE.buildingLit);
+  skirt.position.set(building.x + building.width / 2, 0.6, building.y + building.depth / 2);
+  root.add(skirt);
 
-  const publicPlaces = state.city.graph
-    .placesInBuilding(building.id)
-    .filter((p) => p.floor === 0 && p.zone === "public");
+  // A parapet, so a roof reads as a roof rather than as the top of a box.
+  const height = building.floors * FLOOR_HEIGHT;
+  const cap = box(building.width + 1.2, 0.8, building.depth + 1.2, 0x6f6a62);
+  cap.position.set(building.x + building.width / 2, height + 0.4, building.y + building.depth / 2);
+  root.add(cap);
+  const roof = box(building.width, 0.3, building.depth, 0x585349);
+  roof.position.set(building.x + building.width / 2, height - 0.15, building.y + building.depth / 2);
+  root.add(roof);
 
-  if (publicPlaces.length === 0) {
-    // Nothing here is open to the public, so the building stays what it was: a
-    // solid mass with a way in you have to make rather than walk through.
-    solid(bx, bz, bx + bw, bz + bd, 0, height, PALETTE.building);
-    const skirt = box(bw + 0.6, 1.4, bd + 0.6, PALETTE.buildingLit);
-    skirt.position.set(bx + bw / 2, 0.7, bz + bd / 2);
-    root.add(skirt);
-    return;
-  }
-
-  // The doorway goes on whichever facade the public room is nearest, which is
-  // where an architect would have put it and where the blueprint's own `u`/`v`
-  // already says the room is.
-  const room = publicPlaces[0]!;
-  const gaps = [
-    { side: "-z" as const, d: room.y - bz },
-    { side: "+z" as const, d: bz + bd - room.y },
-    { side: "-x" as const, d: room.x - bx },
-    { side: "+x" as const, d: bx + bw - room.x },
-  ].sort((a, b) => a.d - b.d);
-  const facade = gaps[0]!.side;
-  const alongX = facade === "-z" || facade === "+z";
-
-  // The room spans the facade and reaches far enough in to contain the place
-  // the simulation put there, with room to stand behind it.
-  const REACH = 11;
-  const inner = new THREE.Box3(
-    new THREE.Vector3(
-      alongX ? bx + WALL : facade === "-x" ? bx + WALL : Math.max(bx + WALL, room.x - REACH),
-      0,
-      alongX ? (facade === "-z" ? bz + WALL : Math.max(bz + WALL, room.y - REACH)) : bz + WALL,
-    ),
-    new THREE.Vector3(
-      alongX ? bx + bw - WALL : facade === "+x" ? bx + bw - WALL : Math.min(bx + bw - WALL, room.x + REACH),
-      FLOOR_HEIGHT,
-      alongX ? (facade === "+z" ? bz + bd - WALL : Math.min(bz + bd - WALL, room.y + REACH)) : bz + bd - WALL,
-    ),
-  );
-  if (facade === "-x") inner.max.x = Math.min(bx + bw - WALL, room.x + REACH);
-  if (facade === "+x") inner.min.x = Math.max(bx + WALL, room.x - REACH);
-
-  // Everything that is not the room, at ground level, stays solid — except the
-  // strip the door is in, which is built separately with a gap in it. Filling
-  // that strip here as well is exactly how the first version sealed every
-  // doorway it had just carved.
-  if (inner.min.z > bz && facade !== "-z") solid(bx, bz, bx + bw, inner.min.z, 0, FLOOR_HEIGHT, PALETTE.building);
-  if (inner.max.z < bz + bd && facade !== "+z") solid(bx, inner.max.z, bx + bw, bz + bd, 0, FLOOR_HEIGHT, PALETTE.building);
-  if (facade !== "-x") solid(bx, inner.min.z, inner.min.x, inner.max.z, 0, FLOOR_HEIGHT, PALETTE.building);
-  if (facade !== "+x") solid(inner.max.x, inner.min.z, bx + bw, inner.max.z, 0, FLOOR_HEIGHT, PALETTE.building);
-
-  // The facade the door is in, in two pieces with a gap between them.
-  const mid = alongX ? (inner.min.x + inner.max.x) / 2 : (inner.min.z + inner.max.z) / 2;
-  if (alongX) {
-    const z0 = facade === "-z" ? bz : bz + bd - WALL;
-    solid(inner.min.x, z0, mid - DOORWAY / 2, z0 + WALL, 0, FLOOR_HEIGHT, PALETTE.buildingLit);
-    solid(mid + DOORWAY / 2, z0, inner.max.x, z0 + WALL, 0, FLOOR_HEIGHT, PALETTE.buildingLit);
-  } else {
-    const x0 = facade === "-x" ? bx : bx + bw - WALL;
-    solid(x0, inner.min.z, x0 + WALL, mid - DOORWAY / 2, 0, FLOOR_HEIGHT, PALETTE.buildingLit);
-    solid(x0, mid + DOORWAY / 2, x0 + WALL, inner.max.z, 0, FLOOR_HEIGHT, PALETTE.buildingLit);
-  }
-
-  // Everything above the ground floor is a solid mass, and it is what stops the
-  // room reading as a shed with the rest of the building floating over it.
-  if (height > FLOOR_HEIGHT) {
-    solid(bx, bz, bx + bw, bz + bd, FLOOR_HEIGHT, height, PALETTE.building);
-  }
-
-  // Floor and ceiling. Both are visual only — you are already fenced in by the
-  // walls, and a collider on the floor you stand on serves no purpose.
-  const slab = (y: number, colour: number) => {
-    const mesh = box(inner.max.x - inner.min.x, 0.2, inner.max.z - inner.min.z, colour);
-    mesh.position.set((inner.min.x + inner.max.x) / 2, y, (inner.min.z + inner.max.z) / 2);
-    root.add(mesh);
-  };
-  slab(0.1, 0x8a8378);
-  slab(FLOOR_HEIGHT - 0.1, 0x6a655e);
-
-  // Where the door is, in world terms. Useful to the client for a prompt, and
-  // to the tests for the only question that matters about a doorway: can you
-  // actually walk through it.
-  const outward = facade === "-z" ? -1 : facade === "+z" ? 1 : 0;
-  const sideways = facade === "-x" ? -1 : facade === "+x" ? 1 : 0;
-  const doorX = alongX ? mid : facade === "-x" ? bx : bx + bw;
-  const doorZ = alongX ? (facade === "-z" ? bz : bz + bd) : mid;
-  interiors.push({
-    buildingId: building.id,
-    name: room.name,
-    bounds: inner,
-    placeIds: publicPlaces.map((p) => p.id),
-    approach: new THREE.Vector3(doorX + sideways * 7, EYE, doorZ + outward * 7),
-    entrance: new THREE.Vector3(doorX - sideways * 3, EYE, doorZ - outward * 3),
-  });
+  buildInteriors(state, building, colliders, interiors, root);
 }
 
 /** Roads are drawn along the walkable graph, so the city you see is the city that exists. */
@@ -862,7 +748,7 @@ export function buildCity(state: GameState): CityMeshes {
   addStreetDressing(root, state, lit, rng);
 
   const landmarks: CityMeshes["landmarks"] = [];
-  const interiors: Interior[] = [];
+  const interiors = emptyInteriors();
   for (const building of state.city.buildings.values()) {
     addBuilding(root, state, building, colliders, lit, interiors, rng);
     landmarks.push({
@@ -874,6 +760,8 @@ export function buildCity(state: GameState): CityMeshes {
       ),
     });
   }
+  // Every wall in every building, in two draws.
+  flushInteriors(root, interiors);
 
   // No lights here: `sky.ts` owns them, because what they should be doing
   // depends entirely on what time the simulation says it is.
@@ -903,33 +791,21 @@ export function nearestOutdoorPlace(state: GameState, x: number, z: number): Pla
 /**
  * Where the simulation thinks you are, given where you actually are.
  *
- * Inside a public room the answer comes from that room's own place list, which
- * is what keeps free movement honest: you cannot end up snapped to a staff room
- * by standing near its wall, because a staff room is never in the list.
+ * Indoors the answer comes straight off the floor plan — the grid cell you are
+ * standing in belongs to exactly one room — so free movement and the place
+ * graph never disagree about which room you are in.
  */
 export function placeAt(
   state: GameState,
-  interiors: Interior[],
+  plans: FloorPlan[],
   x: number,
   y: number,
   z: number,
 ): Place | undefined {
-  for (const interior of interiors) {
-    if (x < interior.bounds.min.x || x > interior.bounds.max.x) continue;
-    if (z < interior.bounds.min.z || z > interior.bounds.max.z) continue;
-    if (y > interior.bounds.max.y + 1) continue;
-    let best: Place | undefined;
-    let bestDistance = Infinity;
-    for (const id of interior.placeIds) {
-      const place = state.city.graph.places.get(id);
-      if (!place) continue;
-      const distance = (place.x - x) ** 2 + (place.y - z) ** 2;
-      if (distance < bestDistance) {
-        bestDistance = distance;
-        best = place;
-      }
-    }
-    if (best) return best;
+  const roomId = roomAt(plans, x, y, z);
+  if (roomId) {
+    const place = state.city.graph.places.get(roomId);
+    if (place) return place;
   }
   return nearestOutdoorPlace(state, x, z);
 }

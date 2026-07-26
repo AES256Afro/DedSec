@@ -18,8 +18,8 @@
 import * as THREE from "three";
 
 import type { GameState } from "../../src/sim/state.js";
+import type { FloorPlan } from "./interior.js";
 import { placeAt } from "./world.js";
-import type { Interior } from "./world.js";
 
 const EYE_HEIGHT = 1.68;
 /** Shoulder width, near enough. Keeps you off the glass. */
@@ -31,6 +31,14 @@ const RESYNC_DISTANCE = 4;
 const LOOK_SENSITIVITY = 0.0021;
 /** Just short of straight up/down, so the camera can never invert. */
 const MAX_PITCH = Math.PI / 2 - 0.05;
+/** Broadphase bucket size, in metres. */
+const BUCKET = 24;
+const FLOOR_HEIGHT = 3.6;
+
+function inflate(box: THREE.Box3): THREE.Box3 {
+  // Inflate once rather than testing a radius every frame.
+  return box.clone().expandByVector(new THREE.Vector3(BODY_RADIUS, 0, BODY_RADIUS));
+}
 
 export class PlayerController {
   readonly camera: THREE.PerspectiveCamera;
@@ -42,7 +50,11 @@ export class PlayerController {
   private pitch = 0;
   private keys = new Set<string>();
   private colliders: THREE.Box3[] = [];
-  private interiors: Interior[] = [];
+  /** Colliders bucketed by a coarse grid, so a step tests a few and not all. */
+  private grid = new Map<string, THREE.Box3[]>();
+  private plans: FloorPlan[] = [];
+  /** Doors that are shut right now. Rebuilt whenever a lock changes. */
+  private shut: THREE.Box3[] = [];
   private bounds = new THREE.Box3();
   private lastSync = new THREE.Vector3(Infinity, 0, Infinity);
   private forward = new THREE.Vector3();
@@ -59,19 +71,59 @@ export class PlayerController {
     this.wire();
   }
 
-  /** Colliders, the walkable envelope, and the rooms you may enter. */
-  setWorld(colliders: THREE.Box3[], bounds: THREE.Box3, interiors: Interior[] = []): void {
-    this.interiors = interiors;
-    this.colliders = colliders.map((box) =>
-      // Inflate once here rather than testing a radius every frame.
-      box.clone().expandByVector(new THREE.Vector3(BODY_RADIUS, 0, BODY_RADIUS)),
-    );
+  /** Colliders, the walkable envelope, and the floor plans. */
+  setWorld(colliders: THREE.Box3[], bounds: THREE.Box3, plans: FloorPlan[] = []): void {
+    this.plans = plans;
     this.bounds = bounds;
+    this.colliders = colliders.map((box) => inflate(box));
+    // Thousands of wall segments make a linear scan per axis per frame the
+    // most expensive thing in the client. Bucket them once; a move then tests
+    // the handful of boxes that could possibly be in the way.
+    this.grid.clear();
+    for (const box of this.colliders) this.bucket(box);
   }
 
-  /** Drop the player onto a place, facing a point. */
+  /** The doors the simulation currently says are shut. */
+  setShutDoors(boxes: THREE.Box3[]): void {
+    this.shut = boxes.map((box) => inflate(box));
+  }
+
+  /** Which floor the camera is standing on. */
+  floor(): number {
+    return Math.round((this.camera.position.y - EYE_HEIGHT) / FLOOR_HEIGHT);
+  }
+
+  /** Take the stairs: same spot on the plan, a different storey. */
+  moveToFloor(floor: number, x: number, z: number): void {
+    this.camera.position.set(x, floor * FLOOR_HEIGHT + EYE_HEIGHT, z);
+    this.syncToSim(true);
+  }
+
+  private bucket(box: THREE.Box3): void {
+    const i0 = Math.floor(box.min.x / BUCKET);
+    const i1 = Math.floor(box.max.x / BUCKET);
+    const j0 = Math.floor(box.min.z / BUCKET);
+    const j1 = Math.floor(box.max.z / BUCKET);
+    for (let i = i0; i <= i1; i++) {
+      for (let j = j0; j <= j1; j++) {
+        const key = `${i},${j}`;
+        const list = this.grid.get(key);
+        if (list) list.push(box);
+        else this.grid.set(key, [box]);
+      }
+    }
+  }
+
+  /**
+   * Stand the player at a spot, facing a point.
+   *
+   * Height is deliberately untouched. Standing somewhere else on the same floor
+   * is a move along the ground; dropping to the street every time you were
+   * repositioned made the fourth storey of a building somewhere you could only
+   * ever be for one frame.
+   */
   spawnAt(x: number, z: number, lookAtX = 0, lookAtZ = 0): void {
-    this.camera.position.set(x, EYE_HEIGHT, z);
+    this.camera.position.set(x, this.camera.position.y, z);
     // Forward is (-sin yaw, 0, -cos yaw) — the same vector `update` walks
     // along — so facing a target means solving that for yaw, and the extra
     // half-turn a first pass added here pointed the camera at the one part of
@@ -159,11 +211,17 @@ export class PlayerController {
     if (x < this.bounds.min.x || x > this.bounds.max.x) return;
     if (z < this.bounds.min.z || z > this.bounds.max.z) return;
 
-    this.probe.min.set(x, 0, z);
-    this.probe.max.set(x, 1, z);
-    for (const box of this.colliders) {
-      if (box.intersectsBox(this.probe)) return;
+    // The probe spans the body, not the whole column: a wall on the floor above
+    // is not in your way, and one on the floor below is not either.
+    const feet = position.y - EYE_HEIGHT;
+    this.probe.min.set(x, feet + 0.3, z);
+    this.probe.max.set(x, feet + 1.6, z);
+
+    const near = this.grid.get(`${Math.floor(x / BUCKET)},${Math.floor(z / BUCKET)}`);
+    if (near) {
+      for (const box of near) if (box.intersectsBox(this.probe)) return;
     }
+    for (const box of this.shut) if (box.intersectsBox(this.probe)) return;
 
     position.x = x;
     position.z = z;
@@ -181,7 +239,7 @@ export class PlayerController {
     if (!force && this.lastSync.distanceToSquared(position) < RESYNC_DISTANCE ** 2) return;
     this.lastSync.copy(position);
 
-    const place = placeAt(this.state, this.interiors, position.x, position.y, position.z);
+    const place = placeAt(this.state, this.plans, position.x, position.y, position.z);
     if (!place || place.id === this.state.player.placeId) return;
     this.state.player.placeId = place.id;
     this.state.player.drone.placeId = place.id;
