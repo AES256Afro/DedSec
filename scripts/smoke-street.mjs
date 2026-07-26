@@ -159,11 +159,17 @@ check("looking away closes it", closed === true, closed ? "" : "a card stayed up
 // walls are built out of the same collider list as everything else, so a
 // mis-sized gap seals the room without anything looking wrong from outside.
 const rooms = await page.evaluate(() => window.dedsec.rooms());
-check("public rooms are open to the street", rooms.length >= 3, rooms.map((r) => r.name).join(", "));
+const open = rooms.filter((r) => !r.locked);
+check("public rooms are open to the street", open.length >= 3, open.map((r) => r.name).join(", "));
+check(
+  "and the locked ones are shut",
+  rooms.length > open.length,
+  rooms.filter((r) => r.locked).map((r) => r.name).join(", ") || "nothing locked",
+);
 
 let entered = null;
 let walked = 0;
-for (const room of rooms) {
+for (const room of open) {
   await page.evaluate(
     (r) => window.dedsec.goTo(r.approach[0], r.approach[1], r.inside[0], r.inside[1]),
     room,
@@ -191,7 +197,95 @@ check(
   entered ?? `blocked after ${walked.toFixed(1)}m`,
 );
 
-/* --- 6. a case can be seen and closed ------------------------------------ */
+/* --- 6. the building goes up --------------------------------------------- */
+
+// Every floor of every building is now built, not just the ground one. The
+// question that proves it is whether the stairs actually arrive somewhere: a
+// stairwell that lands you inside a wall, or on a storey that was never built,
+// leaves the player in a solid block with no way back.
+const climbed = await page.evaluate(() => {
+  const state = window.dedsec.state();
+  const places = [...state.city.graph.places.values()];
+  const ground = places.find((p) => p.kind === "stairwell" && p.floor === 0);
+  if (!ground) return null;
+  window.dedsec.goTo(ground.x, ground.y);
+  return { want: ground.id, got: state.player.placeId, floors: places.filter((p) => p.buildingId === ground.buildingId).reduce((n, p) => Math.max(n, p.floor), 0) };
+});
+check(
+  "standing in a stairwell puts you in the stairwell",
+  climbed && climbed.want === climbed.got,
+  climbed ? `${climbed.got} · ${climbed.floors + 1} floors above it` : "no stairwell",
+);
+
+await page.keyboard.press("Space");
+const upstairs = await until(() => {
+  const s = window.dedsec.stats();
+  return s.floor === 1 ? { floor: s.floor, place: window.dedsec.state().player.placeId } : null;
+});
+check(
+  "the stairs go up",
+  Boolean(upstairs),
+  upstairs ? `floor ${upstairs.floor} · ${upstairs.place}` : "still on the ground",
+);
+
+// And the storey you arrived on is a real one, with rooms you can be in. Note
+// that repositioning keeps your height: a floor is somewhere you stay.
+const above = await page.evaluate(() => {
+  const state = window.dedsec.state();
+  const here = state.city.graph.places.get(state.player.placeId);
+  const stair = here.id;
+  const room = [...state.city.graph.places.values()].find(
+    (p) => p.buildingId === here.buildingId && p.floor === here.floor && p.kind !== "stairwell",
+  );
+  window.dedsec.goTo(room.x, room.y);
+  const at = state.player.placeId;
+  // Back to the stairs, so the way down is the way anyone would take it.
+  const back = state.city.graph.places.get(stair);
+  window.dedsec.goTo(back.x, back.y);
+  return { room: room.name, at, want: room.id, floor: window.dedsec.stats().floor };
+});
+check("floor 1 has rooms you can stand in", above.at === above.want, `${above.room} · floor ${above.floor}`);
+
+await page.keyboard.press("KeyC");
+const down = await until(() => (window.dedsec.stats().floor === 0 ? true : null));
+check("and back down again", down === true, down ? "" : "stuck upstairs");
+
+/* --- 7. and you can move once you are in there --------------------------- */
+
+// Rooms now have columns and furniture in them, and both are real colliders.
+// The failure mode that costs a player the session is being put down inside
+// one with every direction blocked, so stand in a few and check you can walk.
+// Ground floor only, because repositioning keeps your height — but every floor
+// is furnished by the same code, so this is a fair sample of it.
+const stuck = [];
+const sample = await page.evaluate(() =>
+  [...window.dedsec.state().city.graph.places.values()]
+    .filter((p) => p.indoor && p.floor === 0 && p.kind !== "stairwell" && p.kind !== "corridor")
+    .slice(0, 4)
+    .map((p) => ({ name: p.name, x: p.x, y: p.y })),
+);
+for (const room of sample) {
+  const from = await page.evaluate((r) => {
+    window.dedsec.goTo(r.x, r.y, r.x + 20, r.y);
+    return window.dedsec.stats().at;
+  }, room);
+  await page.keyboard.down("KeyW");
+  let best = 0;
+  for (let tick = 0; tick < 8 && best < 1; tick++) {
+    await page.waitForTimeout(300);
+    const at = await page.evaluate(() => window.dedsec.stats().at);
+    best = Math.max(best, Math.hypot(at[0] - from[0], at[1] - from[1]));
+  }
+  await page.keyboard.up("KeyW");
+  if (best < 1) stuck.push(`${room.name} (${best.toFixed(1)}m)`);
+}
+check(
+  "nothing in a room can trap you in it",
+  stuck.length === 0,
+  stuck.length ? `stuck in ${stuck.join(", ")}` : sample.map((r) => r.name).join(", "),
+);
+
+/* --- 8. a case can be seen and closed ------------------------------------ */
 
 const resolved = await page.evaluate(async () => {
   const state = window.dedsec.state();

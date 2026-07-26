@@ -214,6 +214,25 @@ body.is-aiming .crosshair {
 .hud-ledger { font-size: 12px; color: var(--accent); }
 .hud-prompt { font-size: 12px; color: var(--ink); background: rgba(6, 9, 13, 0.7); padding: 3px 8px; border: 1px solid var(--line); }
 
+/* Where you are, indoors. The left border carries the clearance, because the
+   difference between a lobby and a restricted lab is the only thing about a
+   room that changes what you are allowed to be doing in it. */
+.hud-where {
+  position: absolute;
+  left: 18px;
+  top: 42px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  background: rgba(6, 9, 13, 0.62);
+  padding: 4px 9px;
+  border-left: 2px solid var(--line);
+}
+.hud-where[data-zone="semi"] { border-left-color: #7fb2d8; color: var(--ink); }
+.hud-where[data-zone="staff"] { border-left-color: #ffc046; color: var(--ink); }
+.hud-where[data-zone="restricted"] { border-left-color: #ff5b5b; color: #ffd4d4; }
+
 /* ------------------------------------------------------------------ panel */
 
 .panel {

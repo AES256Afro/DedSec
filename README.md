@@ -198,16 +198,26 @@ modules the browser loads directly — no bundler, no framework, no build server
 
 **W A S D** walk · **shift** jog · mouse look · **crosshair on somebody** reads
 them out · **F** reads a device · **1**–**5** do whatever the card is offering ·
-**E** stops and looks properly · **Esc** steps back out · **H** hints.
+**E** stops and looks properly · **Esc** steps back out · **space** / **C** take
+the stairs · **H** hints.
 
 The crowd is anonymous until you aim at it. One card, over your target, with the
 actions on it — the only thing the rest of the street carries is a marker over
 the people the caseload has something on.
 
-Walk in through the door of the café, the bar, the clinic, the shop or the
-Nodalis lobby. Those five rooms are `zone: "public"` in the blueprint, which is
-exactly the set anybody may walk into; everything behind them is still a way in
-you have to make.
+Buildings are hollow all the way up. Every room the simulation models is a room
+you can stand in — five storeys of Nodalis Labs, its server room, its prototype
+lab — laid out from the same blueprint coordinates the field terminal draws its
+floor plan from. Walk in off the street, find the stairwell, and go up.
+
+The doors are the access model, not decoration. An unlocked front door is open;
+Helix Tower's badge door and Grove Court's electronic one are shut, and so is
+every staff and restricted door behind them, because the leaf in the world asks
+`playerCanPass` — the same function the pathfinder asks. Get a badge and it
+opens.
+
+Which room you are standing in, and what clearance it wants, is on the HUD
+whenever you are indoors.
 
 ### Controls — the field terminal
 
