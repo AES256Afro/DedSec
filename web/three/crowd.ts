@@ -14,6 +14,11 @@
  *   · **a place is a spot, but people are not a stack.** Everyone standing in
  *     the same place gets a fixed offset derived from their id, so six people
  *     in a plaza look like six people rather than one very solid person.
+ *
+ * The crowd carries almost no information by itself, and that is deliberate:
+ * a flag marker over the people the caseload has something on, a tint on
+ * whoever is under the crosshair, and nothing else. Everything you can read is
+ * on the card, and the card only exists for the person you are aiming at.
  */
 
 import * as THREE from "three";
@@ -23,25 +28,60 @@ import type { Npc } from "../../src/npc/types.js";
 import type { GameState } from "../../src/sim/state.js";
 import { FLOOR_HEIGHT } from "./world.js";
 
-const BODY_HEIGHT = 1.32;
-const HEAD_RADIUS = 0.14;
+/**
+ * A person, at roughly a person's size.
+ *
+ * These numbers matter more than they look. The camera's eye is at 1.68 m, so a
+ * figure that tops out below that is one the crosshair passes clean over — and
+ * with the head excluded from picking, aiming horizontally at somebody hit
+ * nothing at all. Body plus head now comes to about 1.75 m, and both are
+ * pickable.
+ */
+const BODY_HEIGHT = 1.45;
+const HEAD_RADIUS = 0.16;
 const CAPACITY = 512;
 
+/**
+ * People wear clothes, not status.
+ *
+ * Painting the whole figure in its flag colour turned a pavement into a row of
+ * traffic cones and made the crowd unreadable as a crowd. The flag is carried
+ * by the marker over their head, which is enough to spot across a plaza; the
+ * body just says "a person", in one of a dozen muted things a person might have
+ * put on.
+ *
+ * The one exception is the target tint, which is not information about them —
+ * it is the client confirming which of six people on a plaza the card is about.
+ */
+const CLOTHING = [
+  0x44505c, 0x5b5147, 0x6d6459, 0x3f4a55, 0x574a52, 0x4c5b4e,
+  0x6b5f5a, 0x39434e, 0x5f5b4c, 0x4e4a58, 0x6a5a4f, 0x475458,
+].map((hex) => new THREE.Color(hex));
+
 const COLOURS = {
-  plain: new THREE.Color(0x5d6b7a),
-  scanned: new THREE.Color(0x7fa9c4),
+  skin: new THREE.Color(0xb8a898),
+  target: new THREE.Color(0x35e0c8),
   harm: new THREE.Color(0xff5b5b),
   need: new THREE.Color(0xffc046),
-  skin: new THREE.Color(0x9aa7b4),
 };
+
+function hash(id: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 0x01000193) >>> 0;
+  return h >>> 0;
+}
 
 /** A stable per-person jitter, so a crowd reads as a crowd. */
 function scatter(id: string): { dx: number; dz: number } {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 0x01000193) >>> 0;
+  const h = hash(id);
   const angle = ((h >>> 8) / 0xffffff) * Math.PI * 2;
   const radius = 1.5 + ((h & 0xff) / 0xff) * 5.5;
   return { dx: Math.cos(angle) * radius, dz: Math.sin(angle) * radius };
+}
+
+/** What this person happens to be wearing. Same person, same coat, always. */
+function wardrobe(id: string): number {
+  return (hash(id) >>> 3) % CLOTHING.length;
 }
 
 export interface CrowdMember {
@@ -53,7 +93,7 @@ export interface CrowdMember {
 
 export class Crowd {
   readonly bodies: THREE.InstancedMesh;
-  private heads: THREE.InstancedMesh;
+  readonly heads: THREE.InstancedMesh;
   private markers: THREE.InstancedMesh;
   /** Instance index → npc id, rebuilt every sync so picking stays honest. */
   private index: string[] = [];
@@ -82,8 +122,10 @@ export class Crowd {
       mesh.frustumCulled = false;
       scene.add(mesh);
     }
-    this.markers.raycast = () => {}; // markers are decoration, not targets
-    this.heads.raycast = () => {};
+    // Markers are decoration; heads are not. A head is the part of somebody at
+    // eye level, so leaving it out of the raycast is leaving out most of the
+    // times you were actually aiming at them.
+    this.markers.raycast = () => {};
   }
 
   /** Everyone the crowd currently knows about, in instance order. */
@@ -95,12 +137,21 @@ export class Crowd {
     return this.members.get(npcId);
   }
 
-  /** Turn an instance index from a raycast back into a person. */
+  /** The meshes a crosshair may legitimately land on, in pick order. */
+  targets(): THREE.InstancedMesh[] {
+    return [this.bodies, this.heads];
+  }
+
+  /**
+   * Turn an instance index from a raycast back into a person.
+   *
+   * Bodies and heads share one index, so either mesh answers with the same id.
+   */
   npcIdAt(instanceId: number): string | undefined {
     return this.index[instanceId];
   }
 
-  sync(state: GameState, time: number): void {
+  sync(state: GameState, time: number, focusId?: string): void {
     const graph = state.city.graph;
     this.index = [];
     this.members.clear();
@@ -113,7 +164,10 @@ export class Crowd {
 
       const flag = caseFlag(state, person.id);
       const scanned = person.revealedFields.has("identity");
-      const colour = flag === "harm" ? COLOURS.harm : flag === "need" ? COLOURS.need : scanned ? COLOURS.scanned : COLOURS.plain;
+      // Whoever is under the crosshair lights up, so the card is never in doubt
+      // about which of six people on a plaza it belongs to. Everyone else is
+      // simply dressed.
+      const colour = person.id === focusId ? COLOURS.target : CLOTHING[wardrobe(person.id)]!;
 
       this.dummy.position.copy(position);
       this.dummy.position.y += BODY_HEIGHT / 2;

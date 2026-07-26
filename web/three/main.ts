@@ -21,7 +21,7 @@
 
 import * as THREE from "three";
 
-import { ledgerLine, refreshCases, resolveCase } from "../../src/case/cases.js";
+import { casesFor, ledgerLine, refreshCases, resolveCase } from "../../src/case/cases.js";
 import type { ResolutionKind } from "../../src/case/types.js";
 import { formatTime, dayOf } from "../../src/core/time.js";
 import { newGame } from "../../src/game.js";
@@ -134,6 +134,24 @@ class Street {
   }
 
   /** Draw counters plus what the overlay is currently showing. */
+  /**
+   * Stand a few metres from somebody outdoors and look straight at them.
+   *
+   * The card only exists for whoever is under the crosshair, so anything that
+   * wants to see one has to aim first — the console, and the smoke test.
+   */
+  aimAtSomebody(): string | null {
+    for (const member of this.crowd.all()) {
+      const place = this.state.city.graph.places.get(member.npc.placeId);
+      if (!place || place.indoor) continue;
+      this.player.spawnAt(member.position.x + 6, member.position.z, member.position.x, member.position.z);
+      this.refreshVision();
+      passiveScan(this.state, member.npc);
+      return member.npc.name;
+    }
+    return null;
+  }
+
   /** The public rooms and where their doors are, for the console and the tests. */
   rooms(): Array<{ name: string; approach: [number, number]; inside: [number, number]; placeIds: string[] }> {
     return this.interiors.map((i) => ({
@@ -195,6 +213,13 @@ class Street {
           break;
         case "KeyF":
           this.quickBreach();
+          break;
+        case "Digit1":
+        case "Digit2":
+        case "Digit3":
+        case "Digit4":
+        case "Digit5":
+          this.actOnCard(event.code.slice(5));
           break;
         case "Escape":
           this.closePanel();
@@ -271,6 +296,21 @@ class Street {
     this.panelDirty = true;
   }
 
+  /**
+   * Fire whatever the card has under that number.
+   *
+   * The card is the interface, so the keys belong to the card rather than to a
+   * fixed table here — what `2` does depends entirely on who you are looking at.
+   */
+  private actOnCard(key: string): void {
+    const action = this.cards.actions().find((a) => a.key === key);
+    if (!action || !this.focusId) return;
+    const record = casesFor(this.state, this.focusId).find((c) => c.status === "open");
+    if (!record) return;
+    this.toast(resolveCase(this.state, record.id, action.kind as ResolutionKind));
+    this.panelDirty = true;
+  }
+
   private toast(outcome: { ok: boolean; message: string }): void {
     const el = this.el.toast;
     el.textContent = outcome.message;
@@ -309,17 +349,17 @@ class Street {
 
     // 4. Draw. The hour first, since everything else is lit by it.
     this.updateSky();
-    this.crowd.sync(this.state, now);
+    this.crowd.sync(this.state, now, this.focusId);
     if (!this.panelOpen) this.updateFocus();
+    const target = this.focusId ? this.crowd.member(this.focusId) : undefined;
     this.cards.update(
       this.state,
-      this.crowd.all(),
+      target,
       this.player.camera,
-      this.profiled,
-      this.optical,
-      this.focusId,
+      this.focusId ? this.optical.has(this.focusId) : false,
       window.innerWidth,
       window.innerHeight,
+      delta,
     );
     this.labels.update(this.player.camera, window.innerWidth, window.innerHeight);
     this.renderer.render(this.scene, this.player.camera);
@@ -382,7 +422,7 @@ class Street {
   private updateFocus(): void {
     this.raycaster.setFromCamera(this.centre, this.player.camera);
     this.raycaster.far = CARD_RANGE;
-    const hits = this.raycaster.intersectObject(this.crowd.bodies, false);
+    const hits = this.raycaster.intersectObjects(this.crowd.targets(), false);
     let next: string | undefined;
     for (const hit of hits) {
       const id = hit.instanceId === undefined ? undefined : this.crowd.npcIdAt(hit.instanceId);
@@ -403,11 +443,8 @@ class Street {
 
     const person = this.focusId ? this.state.npcs.get(this.focusId) : undefined;
     this.el.prompt.hidden = !person || this.panelOpen;
-    if (person && !this.panelOpen) {
-      this.el.prompt.textContent = person.revealedFields.has("identity")
-        ? `E — look closer at ${person.name}`
-        : "E — look closer";
-    }
+    if (person && !this.panelOpen) this.el.prompt.textContent = "E — look closer";
+    document.body.classList.toggle("is-aiming", Boolean(person) && !this.panelOpen);
 
     if (this.panelOpen && this.panelDirty && person) {
       this.el.panelBody.innerHTML = renderProfilePanel(this.state, person, computeReach(this.state));
@@ -430,4 +467,5 @@ window.dedsec = {
   // it can be answered by asking the renderer.
   stats: () => street.stats(),
   rooms: () => street.rooms(),
+  aimAtSomebody: () => street.aimAtSomebody(),
 };

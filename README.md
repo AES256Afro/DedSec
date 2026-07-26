@@ -36,14 +36,13 @@ Deployment (GitHub Pages, custom domain, DNS): [`docs/hosting.md`](docs/hosting.
 
 **Walk → a card pops → do something about it, or do not.**
 
-Everyone within ctOS range gets a layer-0 card without your asking: name, job,
-income, one flagged quirk. That is the premise of the fantasy taken literally,
-and it is why the profiler reads handsets rather than faces — two-thirds of a
-city is indoors during office hours, and a street where you can only profile
-what you can see is a street with nobody on it. People behind a wall get a
-dashed card; people you can actually see get a solid one.
+Put the crosshair on somebody and ctOS reads them out: name, job, income, one
+flagged quirk, and what you can do about them. Look away and it closes. The
+profiler reads handsets rather than faces — two-thirds of a city is indoors
+during office hours, so someone behind a wall still reads, just marked as
+through-wall rather than seen.
 
-Some cards carry a flag, and flags come in pairs:
+Some people carry a flag, and flags come in pairs:
 
 - 🔴 **flagged** — this person is doing something to someone;
 - 🟡 **at risk** — this person is the one it is being done to.
@@ -197,8 +196,13 @@ modules the browser loads directly — no bundler, no framework, no build server
 
 ### Controls — the street
 
-**W A S D** walk · **shift** jog · mouse look · **E** stop and look properly ·
-**F** read the nearest device they own · **Esc** step back out · **H** hints.
+**W A S D** walk · **shift** jog · mouse look · **crosshair on somebody** reads
+them out · **F** reads a device · **1**–**5** do whatever the card is offering ·
+**E** stops and looks properly · **Esc** steps back out · **H** hints.
+
+The crowd is anonymous until you aim at it. One card, over your target, with the
+actions on it — the only thing the rest of the street carries is a marker over
+the people the caseload has something on.
 
 Walk in through the door of the café, the bar, the clinic, the shop or the
 Nodalis lobby. Those five rooms are `zone: "public"` in the blueprint, which is
