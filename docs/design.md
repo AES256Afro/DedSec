@@ -361,6 +361,41 @@ metres, and every few metres the client asks which outdoor place they are
 nearest and hands that answer back. Line of sight, radio range, who is standing
 next to you: all of it keeps working untouched.
 
+### One card, over whoever you are looking at
+
+The first version put a card over everybody ctOS could read — up to nine at
+once — on the grounds that the city genuinely does know all of it.
+
+That was true and still wrong. Information the game is *always* showing you is
+wallpaper; nobody reads nine cards at once; and there was nothing you could do
+with any of them without first pressing a key to open something else. The
+profiler had become scenery.
+
+So the crowd is anonymous until you aim at it. Put the crosshair on somebody and
+the readout resolves, with what you can do about them attached to it — read
+their phone, and whatever their case is offering, on the number keys. The card
+*is* the interface, so the keys belong to the card: what `2` does depends
+entirely on who you are looking at.
+
+The only thing the unaimed-at crowd carries is a marker over the people the
+caseload has something on. That is what keeps them findable across a plaza
+without sweeping the pavement person by person, and it is the minimum that
+still supports "walk until something catches your eye".
+
+**People wear clothes, not status.** Painting each figure in its flag colour
+turned a pavement into a row of traffic cones. Bodies are now muted clothing
+tones drawn deterministically from the person's id; the flag lives on the
+marker, and the one tint that remains is the teal on your current target — which
+is not information about them, it is the client confirming which of six people
+on a plaza the card belongs to.
+
+**A bug this found.** The camera's eye is at 1.68 m and the figures topped out
+around 1.6 m, with heads excluded from picking as "decoration". Aiming
+horizontally at somebody therefore hit *nothing*. Nobody had noticed because
+cards did not depend on aim. Figures are 1.75 m now and heads are pickable — a
+head is the part of a person at eye level, which makes it most of the times you
+were actually aiming at them.
+
 ### The cards stay DOM
 
 Watch Dogs draws them the same way and for the same reason. Text in a 3D scene
@@ -384,6 +419,45 @@ name, a job, an income and a quirk, all public records, surfaced by their own
 devices. Every layer above it still costs a breach. People behind a wall get a
 dashed card so the overlay never pretends you are looking at someone you are
 not.
+
+### Interiors, and why only five buildings have them
+
+You can walk into the Nodalis lobby, the café floor, the bar, the clinic waiting
+room and the shop. You cannot walk into anything else.
+
+That is not a scoping compromise dressed up as a rule — it *is* the access
+model. The blueprint marks exactly five ground-floor rooms `zone: "public"`, and
+those are the rooms anybody may walk into. Everything behind them is semi, staff
+or restricted, and getting in there is still the game.
+
+The building is built to match. A public room becomes a real volume: floor,
+ceiling, three walls and a facade with a five-metre gap in it, positioned on
+whichever side the blueprint's own `u`/`v` put the room nearest. The rest of the
+footprint stays solid at ground level, and everything above the ground floor is
+a single solid mass.
+
+Two things this got wrong first:
+
+- **The doorway was sealed by the wall that was supposed to have it.** The
+  "everything that is not the room stays solid" pass ran across all four sides,
+  including the one the door had just been carved into. The facade strip now
+  gets skipped there and is built separately, in two pieces.
+- **Snapping had to change.** Free movement rejoins the simulation by asking
+  which place you are nearest, and near a wall the nearest place is often the
+  staff room on the other side of it. `placeAt` answers from the interior's own
+  place list when you are inside one, so you can never be snapped somewhere the
+  access model would not let you stand.
+
+### What a headless renderer does to a walking test
+
+The first version of the interior smoke test held W for 1.4 seconds and
+concluded every doorway was blocked. They were not. Software WebGL renders this
+scene at a few frames a second, the controller advances once per frame with a
+100 ms delta cap, and 1.4 seconds of wall clock came to about two metres of
+walking.
+
+It polls now. Any test that drives a renderer by wall-clock duration is really
+asserting something about the machine it runs on.
 
 ### Infill
 

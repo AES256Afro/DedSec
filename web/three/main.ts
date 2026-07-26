@@ -21,7 +21,7 @@
 
 import * as THREE from "three";
 
-import { ledgerLine, refreshCases, resolveCase } from "../../src/case/cases.js";
+import { casesFor, ledgerLine, refreshCases, resolveCase } from "../../src/case/cases.js";
 import type { ResolutionKind } from "../../src/case/types.js";
 import { formatTime, dayOf } from "../../src/core/time.js";
 import { newGame } from "../../src/game.js";
@@ -34,7 +34,9 @@ import { CARD_RANGE, CardLayer, LabelLayer } from "./cards.js";
 import { Crowd } from "./crowd.js";
 import { renderProfilePanel } from "./panel.js";
 import { PlayerController } from "./player.js";
+import { Sky } from "./sky.js";
 import { buildCity, nearestOutdoorPlace } from "./world.js";
+import type { Interior, LitSurface } from "./world.js";
 
 /** Wall-clock milliseconds per world-minute. Slow: this is a walk, not a shift. */
 const MS_PER_MINUTE = 1400;
@@ -51,6 +53,9 @@ class Street {
   private crowd: Crowd;
   private cards: CardLayer;
   private labels: LabelLayer;
+  private sky: Sky;
+  private lit: LitSurface[];
+  private interiors: Interior[] = [];
   private raycaster = new THREE.Raycaster();
   private centre = new THREE.Vector2(0, 0);
 
@@ -83,20 +88,20 @@ class Street {
 
     this.renderer = new THREE.WebGLRenderer({ canvas: this.el.canvas, antialias: true });
     this.renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
-    this.scene.background = new THREE.Color(0x080d14);
-    // Fog is doing real work here: it hides the edge of a city that is only a
-    // few districts wide, and it is most of why a box skyline reads as depth.
-    // Tuned against the actual extent — the city is ~1.6 km across, and the
-    // first pass at this was dense enough to swallow every building in it.
-    this.scene.fog = new THREE.FogExp2(0x06090d, 0.0011);
+
+    // The sky owns the background, the fog and every light in the scene,
+    // because all three depend on what time the simulation says it is.
+    this.sky = new Sky(this.scene);
 
     const city = buildCity(this.state);
+    this.lit = city.lit;
     this.scene.add(city.root);
 
     this.player = new PlayerController(this.state, this.el.canvas);
-    this.player.setWorld(city.colliders, this.walkableBounds());
+    this.player.setWorld(city.colliders, this.walkableBounds(), city.interiors);
     this.scene.add(this.player.camera);
 
+    this.interiors = city.interiors;
     this.crowd = new Crowd(this.scene);
     this.cards = new CardLayer(this.el.cards);
     this.labels = new LabelLayer(this.el.cards, city.landmarks);
@@ -129,8 +134,44 @@ class Street {
   }
 
   /** Draw counters plus what the overlay is currently showing. */
-  stats(): { triangles: number; calls: number; cards: number; profiled: number; optical: number } {
+  /**
+   * Stand a few metres from somebody outdoors and look straight at them.
+   *
+   * The card only exists for whoever is under the crosshair, so anything that
+   * wants to see one has to aim first — the console, and the smoke test.
+   */
+  aimAtSomebody(): string | null {
+    for (const member of this.crowd.all()) {
+      const place = this.state.city.graph.places.get(member.npc.placeId);
+      if (!place || place.indoor) continue;
+      this.player.spawnAt(member.position.x + 6, member.position.z, member.position.x, member.position.z);
+      this.refreshVision();
+      passiveScan(this.state, member.npc);
+      return member.npc.name;
+    }
+    return null;
+  }
+
+  /** The public rooms and where their doors are, for the console and the tests. */
+  rooms(): Array<{ name: string; approach: [number, number]; inside: [number, number]; placeIds: string[] }> {
+    return this.interiors.map((i) => ({
+      name: i.name,
+      approach: [i.approach.x, i.approach.z],
+      inside: [i.entrance.x, i.entrance.z],
+      placeIds: i.placeIds,
+    }));
+  }
+
+  stats(): {
+    triangles: number;
+    calls: number;
+    cards: number;
+    profiled: number;
+    optical: number;
+    at: [number, number];
+  } {
     return {
+      at: [this.player.camera.position.x, this.player.camera.position.z],
       triangles: this.renderer.info.render.triangles,
       calls: this.renderer.info.render.calls,
       cards: this.el.cards.querySelectorAll(".ctos-card:not([hidden])").length,
@@ -172,6 +213,13 @@ class Street {
           break;
         case "KeyF":
           this.quickBreach();
+          break;
+        case "Digit1":
+        case "Digit2":
+        case "Digit3":
+        case "Digit4":
+        case "Digit5":
+          this.actOnCard(event.code.slice(5));
           break;
         case "Escape":
           this.closePanel();
@@ -248,6 +296,21 @@ class Street {
     this.panelDirty = true;
   }
 
+  /**
+   * Fire whatever the card has under that number.
+   *
+   * The card is the interface, so the keys belong to the card rather than to a
+   * fixed table here — what `2` does depends entirely on who you are looking at.
+   */
+  private actOnCard(key: string): void {
+    const action = this.cards.actions().find((a) => a.key === key);
+    if (!action || !this.focusId) return;
+    const record = casesFor(this.state, this.focusId).find((c) => c.status === "open");
+    if (!record) return;
+    this.toast(resolveCase(this.state, record.id, action.kind as ResolutionKind));
+    this.panelDirty = true;
+  }
+
   private toast(outcome: { ok: boolean; message: string }): void {
     const el = this.el.toast;
     el.textContent = outcome.message;
@@ -284,18 +347,19 @@ class Street {
       this.refreshVision();
     }
 
-    // 4. Draw.
-    this.crowd.sync(this.state, now);
+    // 4. Draw. The hour first, since everything else is lit by it.
+    this.updateSky();
+    this.crowd.sync(this.state, now, this.focusId);
     if (!this.panelOpen) this.updateFocus();
+    const target = this.focusId ? this.crowd.member(this.focusId) : undefined;
     this.cards.update(
       this.state,
-      this.crowd.all(),
+      target,
       this.player.camera,
-      this.profiled,
-      this.optical,
-      this.focusId,
+      this.focusId ? this.optical.has(this.focusId) : false,
       window.innerWidth,
       window.innerHeight,
+      delta,
     );
     this.labels.update(this.player.camera, window.innerWidth, window.innerHeight);
     this.renderer.render(this.scene, this.player.camera);
@@ -303,6 +367,22 @@ class Street {
 
     requestAnimationFrame(this.frame);
   };
+
+  /**
+   * Move the sun, and switch the lights on when it gets dark.
+   *
+   * Window opacity rather than emissive colour: these are unlit `MeshBasic`
+   * planes, so fading them in is both the cheapest and the most convincing way
+   * to make a facade come on at dusk.
+   */
+  private updateSky(): void {
+    const sky = this.sky.update(this.state.time);
+    this.sky.follow(this.player.camera);
+    for (const surface of this.lit) {
+      const material = surface.material as THREE.Material & { opacity: number };
+      material.opacity = surface.day + (surface.night - surface.day) * sky.windowGlow;
+    }
+  }
 
   /**
    * The passive scan, run as a background process rather than a button.
@@ -342,7 +422,7 @@ class Street {
   private updateFocus(): void {
     this.raycaster.setFromCamera(this.centre, this.player.camera);
     this.raycaster.far = CARD_RANGE;
-    const hits = this.raycaster.intersectObject(this.crowd.bodies, false);
+    const hits = this.raycaster.intersectObjects(this.crowd.targets(), false);
     let next: string | undefined;
     for (const hit of hits) {
       const id = hit.instanceId === undefined ? undefined : this.crowd.npcIdAt(hit.instanceId);
@@ -363,11 +443,8 @@ class Street {
 
     const person = this.focusId ? this.state.npcs.get(this.focusId) : undefined;
     this.el.prompt.hidden = !person || this.panelOpen;
-    if (person && !this.panelOpen) {
-      this.el.prompt.textContent = person.revealedFields.has("identity")
-        ? `E — look closer at ${person.name}`
-        : "E — look closer";
-    }
+    if (person && !this.panelOpen) this.el.prompt.textContent = "E — look closer";
+    document.body.classList.toggle("is-aiming", Boolean(person) && !this.panelOpen);
 
     if (this.panelOpen && this.panelDirty && person) {
       this.el.panelBody.innerHTML = renderProfilePanel(this.state, person, computeReach(this.state));
@@ -389,4 +466,6 @@ window.dedsec = {
   // composited, so "did anything draw" cannot be answered by sampling pixels;
   // it can be answered by asking the renderer.
   stats: () => street.stats(),
+  rooms: () => street.rooms(),
+  aimAtSomebody: () => street.aimAtSomebody(),
 };
