@@ -1,7 +1,7 @@
 /**
  * The one console handle, shared by both clients.
  *
- * Two entry points now attach to `window.dednec` — the field terminal and the
+ * Two entry points now attach to `window.dedsec` — the field terminal and the
  * street client — and TypeScript merges `declare global` blocks rather than
  * letting the second one win. Declaring the shape once, here, is what stops the
  * two clients from having to agree on a surface neither of them needs from the
@@ -16,7 +16,7 @@ import type { GameState } from "../src/sim/state.js";
 
 declare global {
   interface Window {
-    dednec: {
+    dedsec: {
       /** The live world. Both clients. */
       state: () => GameState;
       /** Terminal client: the App instance. */
