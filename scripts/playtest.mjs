@@ -31,7 +31,7 @@ await page.goto(`${BASE}/terminal.html?seed=playtest`, { waitUntil: "networkidle
 await page.waitForTimeout(700);
 
 const section = (title) => console.log(`\n── ${title} ${"─".repeat(Math.max(0, 58 - title.length))}`);
-const state = () => page.evaluate(() => window.dednec.state());
+const state = () => page.evaluate(() => window.dedsec.state());
 
 /* --------------------------------------------------- what you open onto --- */
 
@@ -50,10 +50,10 @@ await page.waitForTimeout(300);
 console.log(`  S key        ${(await page.textContent("#toast"))?.trim()}`);
 
 const visible = await page.evaluate(
-  () => [...window.dednec.state().npcs.values()].filter((n) => n.revealedFields.has("identity")).length,
+  () => [...window.dedsec.state().npcs.values()].filter((n) => n.revealedFields.has("identity")).length,
 );
 const identified = await page.evaluate(
-  () => [...window.dednec.state().npcs.values()].filter((n) => n.profileLayer > 0).length,
+  () => [...window.dedsec.state().npcs.values()].filter((n) => n.profileLayer > 0).length,
 );
 console.log(`  profiled     ${visible} named, ${identified} at layer 1+`);
 
@@ -101,9 +101,9 @@ for (const o of objectives) console.log(`  ${o}`);
 section("ten simulated minutes of ordinary play");
 await page.click("#btn-drone");
 await page.evaluate(() => {
-  const s = window.dednec.state();
+  const s = window.dedsec.state();
   const lobby = [...s.city.graph.places.values()].find((p) => p.name === "Nodalis lobby");
-  window.dednec.select("place", lobby.id);
+  window.dedsec.select("place", lobby.id);
 });
 await page.waitForTimeout(150);
 await page.click("[data-fly-to]");
@@ -119,15 +119,15 @@ for (let i = 0; i < 25; i++) {
   if ((await button.count()) === 0) break;
   await button.first().click();
   await page.waitForTimeout(160);
-  breaches = await page.evaluate(() => window.dednec.state().player.breachedNodeIds.size);
+  breaches = await page.evaluate(() => window.dedsec.state().player.breachedNodeIds.size);
   const layered = await page.evaluate(
-    () => [...window.dednec.state().npcs.values()].filter((n) => n.profileLayer >= 1).length,
+    () => [...window.dedsec.state().npcs.values()].filter((n) => n.profileLayer >= 1).length,
   );
   if (layered >= 3) break;
 }
 
 const after = await page.evaluate(() => {
-  const s = window.dednec.state();
+  const s = window.dedsec.state();
   const people = [...s.npcs.values()];
   return {
     layer1: people.filter((n) => n.profileLayer >= 1).length,
@@ -145,9 +145,9 @@ console.log(`  trace        ${(after.trace * 100).toFixed(0)}%`);
 
 section("does the game tell you how to go deeper?");
 const deep = await page.evaluate(() => {
-  const s = window.dednec.state();
+  const s = window.dedsec.state();
   const person = [...s.npcs.values()].find((n) => n.profileLayer === 1);
-  if (person) window.dednec.select("npc", person.id);
+  if (person) window.dedsec.select("npc", person.id);
   return person?.name ?? null;
 });
 await page.waitForTimeout(250);
@@ -159,7 +159,7 @@ console.log(`  next step    ${nextStep ?? "(no guidance shown)"}`);
 // Is that second source actually reachable from where the player is standing?
 // Is the second source the guidance names actually reachable from here?
 const reachable = await page.evaluate(() => {
-  const s = window.dednec.state();
+  const s = window.dedsec.state();
   const person = [...s.npcs.values()].find((n) => n.profileLayer === 1);
   if (!person) return null;
   const wanted = new Set(
@@ -174,7 +174,7 @@ const reachable = await page.evaluate(() => {
 console.log(`  sources      ${JSON.stringify(reachable)} (0 in reach = you must travel, by design)`);
 
 const tutorialDone = await page.evaluate(() => {
-  const t = window.dednec.state().missions.find((r) => r.mission.id === "pattern_of_life");
+  const t = window.dedsec.state().missions.find((r) => r.mission.id === "pattern_of_life");
   return { completed: t ? t.completed.size : 0, total: t?.mission.objectives.length ?? 0 };
 });
 console.log(`  tutorial     ${tutorialDone.completed}/${tutorialDone.total} objectives met`);

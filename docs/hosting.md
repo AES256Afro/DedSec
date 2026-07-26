@@ -9,7 +9,7 @@ npm run build:site
 npx serve site          # or python3 -m http.server, or drag it anywhere
 ```
 
-## dedsek.whatiwatched.com via GitHub Pages
+## dedsec.whatiwatched.com via GitHub Pages
 
 `.github/workflows/deploy.yml` builds and publishes `site/` on every push to
 `main`, gated behind the test suite so a broken world never reaches the domain.
@@ -75,36 +75,76 @@ itself reports nothing useful, and the logs endpoint 404s.
 
 | Type  | Name     | Value                    |
 | ----- | -------- | ------------------------ |
-| CNAME | `dedsek` | `aes256afro.github.io.`  |
+| CNAME | `dedsec` | `aes256afro.github.io.`  |
 
-A `CNAME` is correct here because `dedsek` is a subdomain — apex domains need
+A `CNAME` is correct here because `dedsec` is a subdomain — apex domains need
 `A`/`AAAA` records instead, which is not the case for this one. Propagation is
 usually minutes; GitHub will not issue the TLS certificate until it resolves.
 
 Verify with:
 
 ```bash
-dig +short dedsek.whatiwatched.com
-curl -sI https://dedsek.whatiwatched.com | head -1
+dig +short dedsec.whatiwatched.com
+curl -sI https://dedsec.whatiwatched.com | head -1
 ```
+
+**4. Put the whole hostname in the Pages setting.** Settings → Pages → *Custom
+domain* → `dedsec.whatiwatched.com` → Save.
+
+Not `dedsec`. A bare label is rejected with:
+
+```
+The custom domain `dedsec` is not properly formatted.
+```
+
+and — this is the part that wastes an afternoon — the field is **left empty**
+afterwards. The banner is easy to dismiss, the page then looks exactly like a
+site that simply has no custom domain, and every subsequent deploy goes green.
+
+### The setting is the only thing that routes the domain
+
+This is the most important line in the document, and it was learned the
+expensive way.
+
+The mapping from hostname to repository lives in that Settings field and
+**nowhere else**. `site/CNAME` does not establish it. Observed directly here: a
+deploy published an artifact containing a correct `CNAME` file, both jobs went
+green, and the domain still served
+
+```
+404 — There isn't a GitHub Pages site here.
+```
+
+because the Settings field was empty. That 404 always means the same thing — no
+repository has claimed the hostname — and it is *not* a symptom of a failed
+build, so there is nothing red anywhere to lead you to it.
+
+The deploy workflow now prints both values side by side in its run summary and
+warns when they disagree, which turns this from an afternoon into a glance.
 
 ### The custom domain hides the github.io URL
 
 Worth knowing before you go looking for the site: once a custom domain is
-configured, Pages **redirects** `aes256afro.github.io/DedNec` to it. Because the
-build writes `site/CNAME`, that happens from the very first successful deploy —
-so between publishing and DNS resolving there is no working URL at all. The
-deploy succeeded; the redirect target just does not exist yet.
+configured, Pages **redirects** `aes256afro.github.io/Dedsec` to it. So between
+setting the domain and DNS resolving there is no working URL at all — the deploy
+succeeded, the redirect target just does not exist yet.
 
-If you want to look at the build before sorting out DNS, delete the `CNAME`
-write from `scripts/build-site.mjs` (or clear `CUSTOM_DOMAIN`) and redeploy. The
-site then serves from `aes256afro.github.io/DedNec` — the page uses relative
-asset paths, so it works under a subpath without changes.
+To look at a build before sorting out DNS, clear the Settings field. The site
+then serves from `aes256afro.github.io/Dedsec`; the pages use relative asset
+paths, so they work under a subpath without changes.
 
-Do not instead clear the *Settings* field while leaving `CNAME` in the artifact,
-or set the field while the artifact lacks it: whichever ran last wins, and the
-two disagreeing is the usual cause of a custom domain that mysteriously unsets
-itself on the next deploy.
+### Renaming the domain
+
+Three places, and all three have to agree:
+
+1. `CUSTOM_DOMAIN` in `scripts/build-site.mjs` — writes `site/CNAME`;
+2. the DNS record — rename the record, keep `aes256afro.github.io` as the target
+   and keep it **DNS-only** (grey cloud on Cloudflare). Proxying breaks GitHub's
+   certificate issuance;
+3. Settings → Pages → *Custom domain*.
+
+Do DNS first. GitHub checks that the name resolves when you save the setting,
+and issues the certificate off the back of it.
 
 ## Anywhere else
 

@@ -20,13 +20,13 @@ function arg(name: string, fallback: string): string {
   return index >= 0 ? (process.argv[index + 1] ?? fallback) : fallback;
 }
 
-const seed = arg("seed", "dednec");
+const seed = arg("seed", "dedsec");
 const minutes = Number(arg("minutes", "480"));
 const verbose = process.argv.includes("--verbose");
 
 const state = newGame({ seed });
 
-console.log(`\n  DedNec headless — seed "${seed}"`);
+console.log(`\n  Dedsec headless — seed "${seed}"`);
 console.log(`  ${state.city.graph.places.size} places · ${state.city.nodes.size} network nodes · ${state.npcs.size} people`);
 console.log(`  start ${formatDateTime(state.time)}, running ${minutes} world-minutes\n`);
 
