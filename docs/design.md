@@ -385,6 +385,45 @@ devices. Every layer above it still costs a breach. People behind a wall get a
 dashed card so the overlay never pretends you are looking at someone you are
 not.
 
+### Interiors, and why only five buildings have them
+
+You can walk into the Nodalis lobby, the café floor, the bar, the clinic waiting
+room and the shop. You cannot walk into anything else.
+
+That is not a scoping compromise dressed up as a rule — it *is* the access
+model. The blueprint marks exactly five ground-floor rooms `zone: "public"`, and
+those are the rooms anybody may walk into. Everything behind them is semi, staff
+or restricted, and getting in there is still the game.
+
+The building is built to match. A public room becomes a real volume: floor,
+ceiling, three walls and a facade with a five-metre gap in it, positioned on
+whichever side the blueprint's own `u`/`v` put the room nearest. The rest of the
+footprint stays solid at ground level, and everything above the ground floor is
+a single solid mass.
+
+Two things this got wrong first:
+
+- **The doorway was sealed by the wall that was supposed to have it.** The
+  "everything that is not the room stays solid" pass ran across all four sides,
+  including the one the door had just been carved into. The facade strip now
+  gets skipped there and is built separately, in two pieces.
+- **Snapping had to change.** Free movement rejoins the simulation by asking
+  which place you are nearest, and near a wall the nearest place is often the
+  staff room on the other side of it. `placeAt` answers from the interior's own
+  place list when you are inside one, so you can never be snapped somewhere the
+  access model would not let you stand.
+
+### What a headless renderer does to a walking test
+
+The first version of the interior smoke test held W for 1.4 seconds and
+concluded every doorway was blocked. They were not. Software WebGL renders this
+scene at a few frames a second, the controller advances once per frame with a
+100 ms delta cap, and 1.4 seconds of wall clock came to about two metres of
+walking.
+
+It polls now. Any test that drives a renderer by wall-clock duration is really
+asserting something about the machine it runs on.
+
 ### Infill
 
 The simulation models eight buildings across roughly a square mile. On a

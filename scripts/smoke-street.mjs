@@ -144,7 +144,45 @@ const named = await page.evaluate(() => {
 });
 check("at least one card has resolved to a name", Boolean(named), named ?? "all still scanning");
 
-/* --- 5. a case can be seen and closed ------------------------------------ */
+/* --- 5. you can walk indoors --------------------------------------------- */
+
+// The one question that matters about a doorway: can you get through it. The
+// walls are built out of the same collider list as everything else, so a
+// mis-sized gap seals the room without anything looking wrong from outside.
+const rooms = await page.evaluate(() => window.dedsec.rooms());
+check("public rooms are open to the street", rooms.length >= 3, rooms.map((r) => r.name).join(", "));
+
+let entered = null;
+let walked = 0;
+for (const room of rooms) {
+  await page.evaluate(
+    (r) => window.dedsec.goTo(r.approach[0], r.approach[1], r.inside[0], r.inside[1]),
+    room,
+  );
+  await page.waitForTimeout(150);
+  await page.keyboard.down("KeyW");
+  // Poll rather than guess at a duration. Software WebGL renders this scene at
+  // a few frames a second, and the controller advances per frame, so a fixed
+  // wait that is generous on a GPU covers about two metres here.
+  for (let tick = 0; tick < 20 && entered === null; tick++) {
+    await page.waitForTimeout(400);
+    const at = await page.evaluate(() => ({
+      place: window.dedsec.state().player.placeId,
+      z: window.dedsec.stats().at,
+    }));
+    walked = Math.hypot(at.z[0] - room.approach[0], at.z[1] - room.approach[1]);
+    if (room.placeIds.includes(at.place)) entered = room.name;
+  }
+  await page.keyboard.up("KeyW");
+  if (entered) break;
+}
+check(
+  "walking at a door puts you inside the room",
+  entered !== null,
+  entered ?? `blocked after ${walked.toFixed(1)}m`,
+);
+
+/* --- 6. a case can be seen and closed ------------------------------------ */
 
 const resolved = await page.evaluate(async () => {
   const state = window.dedsec.state();
