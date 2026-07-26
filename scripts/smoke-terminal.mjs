@@ -59,9 +59,9 @@ await page.waitForTimeout(200);
 check("drone deploys", (await page.textContent("#btn-drone"))?.includes("Recall") ?? false);
 
 const lobbyId = await page.evaluate(() => {
-  const state = window.dednec.state();
+  const state = window.dedsec.state();
   const lobby = [...state.city.graph.places.values()].find((p) => p.name === "Nodalis lobby");
-  window.dednec.select("place", lobby.id);
+  window.dedsec.select("place", lobby.id);
   return lobby.id;
 });
 await page.waitForTimeout(200);
@@ -84,15 +84,15 @@ for (let round = 0; round < 20 && breached === 0; round++) {
   if ((await button.count()) === 0) break;
   await button.first().click();
   await page.waitForTimeout(200);
-  breached = await page.evaluate(() => window.dednec.state().player.breachedNodeIds.size);
+  breached = await page.evaluate(() => window.dedsec.state().player.breachedNodeIds.size);
 }
 check("a handset can be breached", breached > 0, `${breached} node(s) open`);
 
 /* --- 4. the profile actually deepens ------------------------------------ */
 const owner = await page.evaluate(() => {
-  const state = window.dednec.state();
+  const state = window.dedsec.state();
   const person = [...state.npcs.values()].find((n) => n.profileLayer >= 1);
-  if (person) window.dednec.select("npc", person.id);
+  if (person) window.dedsec.select("npc", person.id);
   return person ? { name: person.name, layer: person.profileLayer } : null;
 });
 check("breaching a handset lifts a dossier to layer 1", owner !== null, owner ? `${owner.name} → layer ${owner.layer}` : "nobody");

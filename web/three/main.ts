@@ -78,7 +78,7 @@ class Street {
   };
 
   constructor() {
-    const seed = new URLSearchParams(location.search).get("seed") ?? "dednec";
+    const seed = new URLSearchParams(location.search).get("seed") ?? "dedsec";
     this.state = newGame({ seed });
 
     this.renderer = new THREE.WebGLRenderer({ canvas: this.el.canvas, antialias: true });
@@ -381,7 +381,7 @@ const street = new Street();
 // The same handle the terminal client exposes (shape declared once, in
 // `web/global.d.ts`), for the smoke test and for poking at a live world. It is
 // a reference to the real state, not a back door around the rules.
-window.dednec = {
+window.dedsec = {
   state: () => street.state,
   goTo: (x, z, lookAtX, lookAtZ) => street.goTo(x, z, lookAtX, lookAtZ),
   // What the renderer actually put through the pipe last frame. A WebGL canvas
