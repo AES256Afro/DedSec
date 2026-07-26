@@ -37,23 +37,39 @@ So the workflow checks instead. If Pages is off, the build still succeeds — th
 code is fine — and the run summary spells out this setting. Only genuine
 breakage turns the workflow red, which keeps the signal worth reading.
 
-**2. Make `main` the default branch.** Settings → General → *Default branch*.
+**2. Let `main` deploy to the `github-pages` environment.**
+Settings → Environments → `github-pages` → *Deployment branches and tags* → add
+`main` (or remove the restriction).
 
-This one is not obvious, and it fails in a way that gives you nothing to go on.
-The `github-pages` environment ships with a protection rule that only allows
-deployments from the **default branch**. This repository was created with the
-feature branch as its initial branch and `main` added afterwards, so `main` was
-not the default — and a Deploy run from it produced a `deploy` job that failed in
-one second having executed *zero steps*, with no log to download. A job that dies
-before "Set up job" has been rejected by an environment rule, not by anything in
-the workflow.
+This one is genuinely nasty, and it cost three failed deploys here.
 
-Symptom to recognise:
+The `github-pages` environment is created automatically with a deployment branch
+policy, and that policy pins the branch **by name**, fixed at creation time. This
+repository was created with the feature branch as its initial branch, so the
+policy named *that*. Setting `main` as the default branch afterwards — Settings →
+General → *Default branch*, worth doing regardless — does **not** rewrite the
+policy. The environment goes on allowing a branch nobody deploys from.
+
+The symptom is unhelpful in a specific way: the `build` job succeeds completely,
+then `deploy` fails in about a second having run *zero steps*, and there is no
+log to download because no runner ever started.
 
 ```
 build   ✓ success   (tests, site build, artifact uploaded)
-deploy  ✗ failure   1s, no steps, no logs
+deploy  ✗ failure   ~1s, no steps, no logs
 ```
+
+The real error exists only as a check-run annotation, which the Actions UI shows
+at the top of the run page but which never reaches the job log:
+
+```
+Branch "main" is not allowed to deploy to github-pages
+due to environment protection rules.
+```
+
+If you are reading it over the API rather than the UI, that is
+`GET /repos/{owner}/{repo}/check-runs/{job_id}/annotations` — the job endpoint
+itself reports nothing useful, and the logs endpoint 404s.
 
 **3. Point DNS at Pages.** At whatever hosts DNS for `whatiwatched.com`, add:
 
