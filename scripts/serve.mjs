@@ -1,8 +1,10 @@
 /**
  * Zero-dependency static server for the web client.
  *
- * Serves the repo root so `web/index.html` can load the compiled modules out of
- * `dist/web/`. Run `npm run serve` and open the printed URL.
+ * With no argument it serves the repo root, so `web/index.html` can load the
+ * compiled modules out of `dist/web/`. Pass a directory to serve that instead —
+ * `node scripts/serve.mjs site` serves the built bundle exactly as a host would,
+ * which is what CI points the browser smoke test at.
  */
 
 import { createServer } from "node:http";
@@ -10,8 +12,9 @@ import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 import { extname, join, normalize, resolve } from "node:path";
 
-const ROOT = resolve(process.cwd());
-const PORT = Number(process.env.PORT ?? 5173);
+const ROOT = resolve(process.argv[2] ?? process.cwd());
+const SERVING_SITE = process.argv[2] !== undefined;
+const PORT = Number(process.env.PORT ?? (SERVING_SITE ? 5174 : 5173));
 
 const TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -29,7 +32,7 @@ const server = createServer(async (req, res) => {
   try {
     const url = new URL(req.url ?? "/", `http://${req.headers.host}`);
     let path = decodeURIComponent(url.pathname);
-    if (path === "/") path = "/web/index.html";
+    if (path === "/") path = SERVING_SITE ? "/index.html" : "/web/index.html";
 
     // Contain everything under the repo root — no traversal out of it.
     const filePath = join(ROOT, normalize(path));
@@ -55,6 +58,6 @@ const server = createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`\n  DedNec running at http://localhost:${PORT}/`);
+  console.log(`\n  DedNec running at http://localhost:${PORT}/ (serving ${ROOT})`);
   console.log(`  Try a different city with http://localhost:${PORT}/?seed=marina\n`);
 });

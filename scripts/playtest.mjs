@@ -12,12 +12,18 @@
  *   npm run serve && node scripts/playtest.mjs
  */
 
+import { existsSync } from "node:fs";
+
 import { chromium } from "playwright";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:5173";
-const EXECUTABLE = process.env.CHROMIUM_PATH ?? "/opt/pw-browsers/chromium";
+/** This sandbox preinstalls Chromium; CI uses Playwright's own download. */
+function launchOptions() {
+  const configured = process.env.CHROMIUM_PATH || "/opt/pw-browsers/chromium";
+  return existsSync(configured) ? { executablePath: configured } : {};
+}
 
-const browser = await chromium.launch({ executablePath: EXECUTABLE });
+const browser = await chromium.launch(launchOptions());
 const page = await browser.newPage({ viewport: { width: 1600, height: 900 } });
 page.on("pageerror", (e) => console.log(`  !! pageerror: ${e.message}`));
 
