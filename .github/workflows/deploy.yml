@@ -52,10 +52,46 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if gh api "repos/${{ github.repository }}/pages" >/dev/null 2>&1; then
+          if gh api "repos/${{ github.repository }}/pages" > pages.json 2>/dev/null; then
             echo "enabled=true" >> "$GITHUB_OUTPUT"
+            echo "cname=$(jq -r '.cname // ""' pages.json)" >> "$GITHUB_OUTPUT"
           else
             echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # A deploy can go completely green and still serve a 404, because the
+      # hostname → repository mapping lives in a *setting* rather than in this
+      # repository. When that setting is empty, GitHub has no idea it is meant to
+      # answer for the domain, and every request gets "There isn't a GitHub Pages
+      # site here" — with nothing red anywhere to explain it.
+      #
+      # So the run says what GitHub actually thinks the domain is, next to what
+      # the build asked for. Guessing at this cost several hours once already.
+      - name: does GitHub agree about the domain?
+        if: steps.pages.outputs.enabled == 'true'
+        run: |
+          want="$(cat site/CNAME 2>/dev/null || true)"
+          got="${{ steps.pages.outputs.cname }}"
+          {
+            echo "## Pages"
+            echo
+            echo "| | |"
+            echo "| --- | --- |"
+            echo "| built for | \`${want:-<none>}\` |"
+            echo "| GitHub serves | \`${got:-<none, default domain only>}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$want" != "$got" ]; then
+            {
+              echo
+              echo "These do not match, so the custom domain will 404."
+              echo
+              echo "Fix: **Settings → Pages → Custom domain** → \`${want}\` → Save."
+              echo "It must be the whole hostname. A bare label is rejected with"
+              echo "\"not properly formatted\", and the field is left empty — which"
+              echo "looks like nothing happened."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning::Pages custom domain is '${got:-unset}' but the build expects '${want}' — the domain will 404 until they match."
           fi
 
       - name: explain how to turn Pages on
@@ -75,7 +111,7 @@ jobs:
             echo
             echo "| Type | Name | Value |"
             echo "| --- | --- | --- |"
-            echo "| CNAME | \`dedsek\` | \`${{ github.repository_owner }}.github.io.\` |"
+            echo "| CNAME | \`dedsec\` | \`${{ github.repository_owner }}.github.io.\` |"
           } >> "$GITHUB_STEP_SUMMARY"
           echo "::warning::Pages is not enabled — the site was built but not published. See the run summary for the one setting to change."
 

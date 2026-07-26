@@ -25,7 +25,7 @@ export interface NewGameOptions {
 }
 
 export function newGame(options: NewGameOptions = {}): GameState {
-  const seed = options.seed ?? "dednec";
+  const seed = options.seed ?? "dedsec";
   const city = generateCity(seed);
   const { npcs, rosters } = generatePopulation(city, seed);
 

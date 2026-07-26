@@ -57,7 +57,7 @@ const canvas = await page.evaluate(() => {
 check("the canvas is sized and has a GL context", canvas.width > 100 && canvas.webgl, `${canvas.width}×${canvas.height}`);
 
 const world = await page.evaluate(() => {
-  const state = window.dednec.state();
+  const state = window.dedsec.state();
   return {
     people: state.npcs.size,
     cases: state.cases.length,
@@ -72,7 +72,7 @@ check("the city booted with people and a caseload", world.people > 20 && world.c
 // Sampling pixels does not work here: a WebGL canvas without
 // `preserveDrawingBuffer` reads back blank once the frame is composited, so a
 // perfectly good scene would fail. Ask the renderer what it drew instead.
-const drawn = await page.evaluate(() => window.dednec.stats());
+const drawn = await page.evaluate(() => window.dedsec.stats());
 check(
   "the renderer drew the city",
   drawn.triangles > 1000 && drawn.calls > 4,
@@ -85,7 +85,7 @@ await page.mouse.click(720, 430); // takes pointer lock and starts the walk
 await page.waitForTimeout(150);
 
 const scannedBefore = await page.evaluate(
-  () => [...window.dednec.state().npcs.values()].filter((n) => n.revealedFields.has("identity")).length,
+  () => [...window.dedsec.state().npcs.values()].filter((n) => n.revealedFields.has("identity")).length,
 );
 
 for (const key of ["KeyW", "KeyA", "KeyW", "KeyD"]) {
@@ -96,7 +96,7 @@ for (const key of ["KeyW", "KeyA", "KeyW", "KeyD"]) {
 await page.waitForTimeout(600);
 
 const after = await page.evaluate(() => {
-  const state = window.dednec.state();
+  const state = window.dedsec.state();
   return {
     scanned: [...state.npcs.values()].filter((n) => n.revealedFields.has("identity")).length,
     placeId: state.player.placeId,
@@ -112,7 +112,7 @@ check("the ledger counts what the walk turned up", after.ledger === after.scanne
 // Where the free walk above ends up is not deterministic enough to assert on,
 // so stand somewhere there provably *is* somebody and look straight at them.
 const stood = await page.evaluate(() => {
-  const state = window.dednec.state();
+  const state = window.dedsec.state();
   const graph = state.city.graph;
   const counts = new Map();
   for (const person of state.npcs.values()) {
@@ -123,13 +123,13 @@ const stood = await page.evaluate(() => {
   const [busiest] = [...counts.entries()].sort((a, b) => b[1] - a[1]);
   if (!busiest) return null;
   const place = graph.place(busiest[0]);
-  window.dednec.goTo(place.x - 17, place.y, place.x, place.y);
+  window.dedsec.goTo(place.x - 17, place.y, place.x, place.y);
   return { name: place.name, people: busiest[1] };
 });
 check("there is somewhere with people standing in it", stood !== null, stood ? `${stood.people} in ${stood.name}` : "nobody outdoors");
 await page.waitForTimeout(900);
 
-const overlay = await page.evaluate(() => window.dednec.stats());
+const overlay = await page.evaluate(() => window.dedsec.stats());
 check(
   "ctOS cards project over people",
   overlay.cards > 0,
@@ -147,7 +147,7 @@ check("at least one card has resolved to a name", Boolean(named), named ?? "all 
 /* --- 5. a case can be seen and closed ------------------------------------ */
 
 const resolved = await page.evaluate(async () => {
-  const state = window.dednec.state();
+  const state = window.dedsec.state();
   // The compiled tree sits at a different depth in the repo and in the built
   // site, so resolve against the page's own entry module rather than guessing.
   const entry = document.querySelector('script[type="module"]').src;

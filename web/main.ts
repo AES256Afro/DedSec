@@ -76,7 +76,7 @@ class App {
   };
 
   constructor() {
-    const seed = new URLSearchParams(location.search).get("seed") ?? "dednec";
+    const seed = new URLSearchParams(location.search).get("seed") ?? "dedsec";
     this.state = newGame({ seed });
     this.map = new MapRenderer(document.getElementById("map") as HTMLCanvasElement);
     this.map.resize();
@@ -470,7 +470,7 @@ const app = new App();
 // console. Everything here is already reachable through the UI; this is a
 // handle on the same objects, not a back door around the rules. The shape is
 // declared once in `web/global.d.ts`, since both clients attach to it.
-window.dednec = {
+window.dedsec = {
   app,
   state: () => app.state,
   select: (kind, id) => app.selectFromConsole({ kind, id }),

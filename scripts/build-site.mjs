@@ -17,7 +17,7 @@ const ROOT = resolve(process.cwd());
 const OUT = join(ROOT, "site");
 
 /** Custom domain for GitHub Pages. Delete this file to serve from *.github.io. */
-const CUSTOM_DOMAIN = "dedsek.whatiwatched.com";
+const CUSTOM_DOMAIN = "dedsec.whatiwatched.com";
 
 await rm(OUT, { recursive: true, force: true });
 await mkdir(OUT, { recursive: true });
