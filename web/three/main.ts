@@ -34,7 +34,9 @@ import { CARD_RANGE, CardLayer, LabelLayer } from "./cards.js";
 import { Crowd } from "./crowd.js";
 import { renderProfilePanel } from "./panel.js";
 import { PlayerController } from "./player.js";
+import { Sky } from "./sky.js";
 import { buildCity, nearestOutdoorPlace } from "./world.js";
+import type { LitSurface } from "./world.js";
 
 /** Wall-clock milliseconds per world-minute. Slow: this is a walk, not a shift. */
 const MS_PER_MINUTE = 1400;
@@ -51,6 +53,8 @@ class Street {
   private crowd: Crowd;
   private cards: CardLayer;
   private labels: LabelLayer;
+  private sky: Sky;
+  private lit: LitSurface[];
   private raycaster = new THREE.Raycaster();
   private centre = new THREE.Vector2(0, 0);
 
@@ -83,14 +87,13 @@ class Street {
 
     this.renderer = new THREE.WebGLRenderer({ canvas: this.el.canvas, antialias: true });
     this.renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
-    this.scene.background = new THREE.Color(0x080d14);
-    // Fog is doing real work here: it hides the edge of a city that is only a
-    // few districts wide, and it is most of why a box skyline reads as depth.
-    // Tuned against the actual extent — the city is ~1.6 km across, and the
-    // first pass at this was dense enough to swallow every building in it.
-    this.scene.fog = new THREE.FogExp2(0x06090d, 0.0011);
+
+    // The sky owns the background, the fog and every light in the scene,
+    // because all three depend on what time the simulation says it is.
+    this.sky = new Sky(this.scene);
 
     const city = buildCity(this.state);
+    this.lit = city.lit;
     this.scene.add(city.root);
 
     this.player = new PlayerController(this.state, this.el.canvas);
@@ -284,7 +287,8 @@ class Street {
       this.refreshVision();
     }
 
-    // 4. Draw.
+    // 4. Draw. The hour first, since everything else is lit by it.
+    this.updateSky();
     this.crowd.sync(this.state, now);
     if (!this.panelOpen) this.updateFocus();
     this.cards.update(
@@ -303,6 +307,22 @@ class Street {
 
     requestAnimationFrame(this.frame);
   };
+
+  /**
+   * Move the sun, and switch the lights on when it gets dark.
+   *
+   * Window opacity rather than emissive colour: these are unlit `MeshBasic`
+   * planes, so fading them in is both the cheapest and the most convincing way
+   * to make a facade come on at dusk.
+   */
+  private updateSky(): void {
+    const sky = this.sky.update(this.state.time);
+    this.sky.follow(this.player.camera);
+    for (const surface of this.lit) {
+      const material = surface.material as THREE.Material & { opacity: number };
+      material.opacity = surface.day + (surface.night - surface.day) * sky.windowGlow;
+    }
+  }
 
   /**
    * The passive scan, run as a background process rather than a button.

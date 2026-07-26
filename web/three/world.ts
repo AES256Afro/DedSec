@@ -33,14 +33,14 @@ export const FLOOR_HEIGHT = 3.6;
  * a twenty-metre road came out over a hundred metres wide, and the city read as
  * a ring road with the buildings parked around the edge of it.
  */
-const INFILL_CELL = 26;
-const INFILL_STEP = 30;
+const INFILL_CELL = 15;
+const INFILL_STEP = 17;
 /** Kerb to facade. A street is about twice this wide. */
 const STREET_CLEARANCE = 10;
 /** Buildings the game is played in get a bit more elbow room than a terrace. */
 const BUILDING_CLEARANCE = 8;
-const INFILL_CAPACITY = 2400;
-const INFILL_WINDOW_CAPACITY = 9000;
+const INFILL_CAPACITY = 4200;
+const INFILL_WINDOW_CAPACITY = 14000;
 
 export interface CityMeshes {
   root: THREE.Group;
@@ -48,32 +48,70 @@ export interface CityMeshes {
   colliders: THREE.Box3[];
   /** Buildings the simulation actually models, for the navigation labels. */
   landmarks: Array<{ name: string; position: THREE.Vector3 }>;
+  /**
+   * Everything that switches on after dark, with its own range — a streetlight
+   * bulb and the pool of light it throws want very different numbers, and a
+   * single shared opacity made one of them wrong at every hour.
+   */
+  lit: LitSurface[];
+}
+
+export interface LitSurface {
+  material: THREE.Material;
+  /** Opacity in full daylight. */
+  day: number;
+  /** Opacity at midnight. */
+  night: number;
 }
 
 /**
- * Night, but a *legible* night.
+ * Daylight, and a city that is made of something.
  *
- * The first pass at this used the terminal client's palette directly — panel
- * greys in the #0e1319 range — and produced a screen that was, correctly and
- * uselessly, black: a Lambert surface multiplies its colour by the light, so
- * a 10%-grey building under a 16%-grey ambient is 1.6% grey. These are the
- * values that survive that multiplication and still read as a night city.
+ * The first pass was a permanent night in panel greys, and it rendered —
+ * correctly and uselessly — black: a Lambert surface multiplies its colour by
+ * the light, so a 10%-grey building under a 16%-grey ambient is 1.6% grey.
+ *
+ * These are surfaces rather than moods. Warm concrete, asphalt, painted lines,
+ * glass. They read at noon *and* at midnight because `sky.ts` changes the light
+ * rather than the paint, which is how it works outdoors.
  */
 const PALETTE = {
-  // Dark ground, lit facades. Up-facing surfaces catch the sky light and
-  // side-facing ones do not, so a pavement the same grey as a wall reads
-  // *brighter* than the wall and flattens the whole street.
-  ground: 0x090d12,
-  district: 0x141c25,
-  road: 0x2a3745,
-  building: 0x3a4c62,
-  buildingLit: 0x50697f,
+  ground: 0x6f7168,
+  district: 0x8e8d85,
+  road: 0x4b4d51,
+  markings: 0xd6d2c2,
+  building: 0xb4ac9c,
+  buildingLit: 0xc9c0ac,
+  /** Glass, tinted the one colour this game has always been. */
   window: 0x35e0c8,
-  kerb: 0x364552,
-  /** Infill is a shade colder and duller than anything the game is played in. */
-  infill: 0x2e3d4e,
-  infillWindow: 0xe8cf94,
+  kerb: 0xa5a196,
+  infillWindow: 0xffdca6,
 };
+
+/**
+ * The row.
+ *
+ * One grey repeated four hundred times is a warehouse estate, and it was the
+ * single biggest thing between this and a city you would believe. Real terraces
+ * are painted, individually, by people who were not consulting each other —
+ * so the blocks draw from a spread of plausible facade colours and no two
+ * neighbours are reliably alike.
+ */
+const FACADES = [
+  0xd8cfbc, // cream
+  0xc9b7a0, // sand
+  0xb08d76, // terracotta
+  0x9aa79c, // sage
+  0x8fa3b8, // pale blue
+  0xbfb0ae, // dusty pink
+  0xa89a86, // stone
+  0x7f8c96, // slate
+  0xc4c0b4, // off-white
+  0x94766a, // brick
+];
+
+/** Shopfronts are darker and glassier than the storeys above them. */
+const SHOPFRONTS = [0x3d4a52, 0x4a3f3a, 0x2f4740, 0x53453c, 0x36404d];
 
 function box(w: number, h: number, d: number, colour: number, opts: { emissive?: number } = {}) {
   const material = new THREE.MeshLambertMaterial({
@@ -83,12 +121,24 @@ function box(w: number, h: number, d: number, colour: number, opts: { emissive?:
   return new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
 }
 
-/** Lit windows scattered up a facade — the whole reason a night city reads. */
+/**
+ * Windows up a facade.
+ *
+ * One material per facade, handed back to the caller, because the clock owns
+ * how lit they are: near-transparent glass tint by day, burning by night. A
+ * building whose windows do not change is the single loudest tell that a scene
+ * is not really outdoors.
+ */
 function facadeWindows(building: Building, rng: () => number): THREE.InstancedMesh {
   const perFloor = Math.max(2, Math.floor(building.width / 14));
   const count = perFloor * building.floors * 2;
   const geometry = new THREE.PlaneGeometry(2.2, 1.4);
-  const material = new THREE.MeshBasicMaterial({ color: PALETTE.window, transparent: true, opacity: 0.5 });
+  const material = new THREE.MeshBasicMaterial({
+    color: PALETTE.window,
+    transparent: true,
+    opacity: 0.5,
+    fog: true,
+  });
   const mesh = new THREE.InstancedMesh(geometry, material, count);
   const dummy = new THREE.Object3D();
 
@@ -126,7 +176,13 @@ function addDistrict(root: THREE.Group, district: District): void {
   root.add(mesh);
 }
 
-function addBuilding(root: THREE.Group, building: Building, colliders: THREE.Box3[], rng: () => number): void {
+function addBuilding(
+  root: THREE.Group,
+  building: Building,
+  colliders: THREE.Box3[],
+  lit: LitSurface[],
+  rng: () => number,
+): void {
   const height = building.floors * FLOOR_HEIGHT;
   const mesh = box(building.width, height, building.depth, PALETTE.building);
   mesh.position.set(building.x + building.width / 2, height / 2, building.y + building.depth / 2);
@@ -139,7 +195,9 @@ function addBuilding(root: THREE.Group, building: Building, colliders: THREE.Box
   skirt.position.set(building.x + building.width / 2, 0.7, building.y + building.depth / 2);
   root.add(skirt);
 
-  root.add(facadeWindows(building, rng));
+  const glass = facadeWindows(building, rng);
+  lit.push({ material: glass.material as THREE.Material, day: 0.09, night: 0.8 });
+  root.add(glass);
 
   colliders.push(
     new THREE.Box3(
@@ -173,12 +231,6 @@ function addRoads(root: THREE.Group, state: GameState): void {
     road.rotation.y = heading;
     root.add(road);
 
-    // A centre line. Without one the carriageway is a flat tone under your feet
-    // and you cannot tell which way the street runs until you have walked it.
-    const line = box(length - 6, 0.02, 0.5, PALETTE.kerb);
-    line.position.set(a.x + dx / 2, 0.14, a.y + dz / 2);
-    line.rotation.y = heading;
-    root.add(line);
   }
 
   // A pad under each outdoor place so junctions and plazas read as somewhere.
@@ -268,26 +320,55 @@ function nearSegment(cell: Rect, seg: [number, number, number, number], margin: 
  * for every lit window in all of them. Several hundred buildings at two draw
  * calls, which is the only reason this is affordable at all.
  */
-function addInfill(root: THREE.Group, state: GameState, colliders: THREE.Box3[], rng: () => number): void {
+function addInfill(
+  root: THREE.Group,
+  state: GameState,
+  colliders: THREE.Box3[],
+  litSurfaces: LitSurface[],
+  rng: () => number,
+): void {
   const clear = keepClear(state);
   const blocks = new THREE.InstancedMesh(
     new THREE.BoxGeometry(1, 1, 1),
-    // A little emissive so the far side of a block does not go to pure black
-    // under a single directional light.
-    new THREE.MeshLambertMaterial({ color: 0xffffff, emissive: 0x0d151d }),
+    // A little emissive so the shaded side of a block never goes to pure black.
+    new THREE.MeshLambertMaterial({ color: 0xffffff, emissive: 0x161a1e }),
     INFILL_CAPACITY,
   );
   const windows = new THREE.InstancedMesh(
     new THREE.PlaneGeometry(2.6, 1.7),
-    new THREE.MeshBasicMaterial({ color: PALETTE.infillWindow, transparent: true, opacity: 0.6 }),
+    new THREE.MeshBasicMaterial({ color: PALETTE.infillWindow, transparent: true, opacity: 0.6, fog: true }),
     INFILL_WINDOW_CAPACITY,
   );
+  // A cornice: a slightly wider, darker slab on top. Two triangles' worth of
+  // geometry, and the whole reason a block stops reading as an extruded
+  // rectangle and starts reading as a building someone finished.
+  const cornices = new THREE.InstancedMesh(
+    new THREE.BoxGeometry(1, 1, 1),
+    new THREE.MeshLambertMaterial({ color: 0x6f6a62 }),
+    INFILL_CAPACITY,
+  );
+  // The ground floor is not the same as the floors above it. In a real street
+  // it is glass, signage and a different colour entirely, and it is what your
+  // eye is actually at the height of.
+  const shops = new THREE.InstancedMesh(
+    new THREE.BoxGeometry(1, 1, 1),
+    new THREE.MeshLambertMaterial({ color: 0xffffff }),
+    INFILL_CAPACITY,
+  );
+  const shopGlass = new THREE.InstancedMesh(
+    new THREE.BoxGeometry(1, 1, 1),
+    new THREE.MeshBasicMaterial({ color: 0x9fd8d2, transparent: true, opacity: 0.35, fog: true }),
+    INFILL_CAPACITY * 2,
+  );
+
   const dummy = new THREE.Object3D();
   const tint = new THREE.Color();
   const parked = new THREE.Vector3(0, -1000, 0);
 
   let block = 0;
   let lit = 0;
+  let shopCount = 0;
+  let glassCount = 0;
 
   for (const district of state.city.districts.values()) {
     for (let x = district.x + 8; x + INFILL_CELL < district.x + district.width - 8; x += INFILL_STEP) {
@@ -299,10 +380,10 @@ function addInfill(root: THREE.Group, state: GameState, colliders: THREE.Box3[],
 
         // A skyline needs a distribution, not a mean: mostly low, occasionally
         // tall, and never the same twice down a street.
-        const floors = 2 + Math.floor(rng() ** 2.2 * 13);
+        const floors = 2 + Math.floor(rng() ** 2.4 * 12);
         const height = floors * FLOOR_HEIGHT;
-        const width = INFILL_CELL - 2 - rng() * 4;
-        const depth = INFILL_CELL - 2 - rng() * 4;
+        const width = INFILL_CELL - 1 - rng() * 2;
+        const depth = INFILL_CELL - 1 - rng() * 2;
         const cx = x + INFILL_CELL / 2;
         const cz = z + INFILL_CELL / 2;
 
@@ -311,9 +392,41 @@ function addInfill(root: THREE.Group, state: GameState, colliders: THREE.Box3[],
         dummy.scale.set(width, height, depth);
         dummy.updateMatrix();
         blocks.setMatrixAt(block, dummy.matrix);
-        tint.setHex(PALETTE.infill).offsetHSL((rng() - 0.5) * 0.03, 0, (rng() - 0.5) * 0.09);
+        // Painted individually, by people who were not consulting each other.
+        tint.setHex(FACADES[Math.floor(rng() * FACADES.length)]!).offsetHSL(0, 0, (rng() - 0.5) * 0.07);
         blocks.setColorAt(block, tint);
         block++;
+
+        // Cornice.
+        dummy.position.set(cx, height + 0.35, cz);
+        dummy.scale.set(width + 1.1, 0.7, depth + 1.1);
+        dummy.updateMatrix();
+        cornices.setMatrixAt(block - 1, dummy.matrix);
+
+        // Shopfront, on the lower storeys of the shorter blocks.
+        if (shopCount < INFILL_CAPACITY) {
+          dummy.position.set(cx, 1.9, cz);
+          dummy.scale.set(width + 0.5, 3.8, depth + 0.5);
+          dummy.updateMatrix();
+          shops.setMatrixAt(shopCount, dummy.matrix);
+          tint.setHex(SHOPFRONTS[Math.floor(rng() * SHOPFRONTS.length)]!);
+          shops.setColorAt(shopCount, tint);
+          shopCount++;
+
+          // Glazing on two faces, which is enough — you only ever see the
+          // street side, and the other three are up against the next building.
+          for (const [ox, oz, sx, sz] of [
+            [0, (depth + 0.66) / 2, width * 0.72, 0.1],
+            [(width + 0.66) / 2, 0, 0.1, depth * 0.72],
+          ] as const) {
+            if (glassCount >= INFILL_CAPACITY * 2) break;
+            dummy.position.set(cx + ox, 2.1, cz + oz);
+            dummy.scale.set(Math.max(0.1, sx), 2.1, Math.max(0.1, sz));
+            dummy.updateMatrix();
+            shopGlass.setMatrixAt(glassCount++, dummy.matrix);
+          }
+        }
+        dummy.rotation.set(0, 0, 0);
 
         colliders.push(
           new THREE.Box3(
@@ -342,37 +455,256 @@ function addInfill(root: THREE.Group, state: GameState, colliders: THREE.Box3[],
     }
   }
 
+  // Counts rather than parked matrices where the mesh supports it — an
+  // InstancedMesh only draws `count`, so unused slots cost nothing at all.
+  blocks.count = block;
+  cornices.count = block;
+  shops.count = shopCount;
+  shopGlass.count = glassCount;
+  windows.count = lit;
+
   dummy.position.copy(parked);
   dummy.rotation.set(0, 0, 0);
   dummy.scale.setScalar(1);
   dummy.updateMatrix();
-  for (let i = block; i < INFILL_CAPACITY; i++) blocks.setMatrixAt(i, dummy.matrix);
-  for (let i = lit; i < INFILL_WINDOW_CAPACITY; i++) windows.setMatrixAt(i, dummy.matrix);
 
-  blocks.instanceMatrix.needsUpdate = true;
-  windows.instanceMatrix.needsUpdate = true;
-  if (blocks.instanceColor) blocks.instanceColor.needsUpdate = true;
-  // Scenery is never a target: keep it out of every raycast the client runs.
-  blocks.raycast = () => {};
-  windows.raycast = () => {};
-  root.add(blocks);
-  root.add(windows);
+  for (const mesh of [blocks, cornices, shops, shopGlass, windows]) {
+    mesh.instanceMatrix.needsUpdate = true;
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    // Scenery is never a target: keep it out of every raycast the client runs.
+    mesh.raycast = () => {};
+    root.add(mesh);
+  }
+  litSurfaces.push(
+    { material: windows.material as THREE.Material, day: 0.04, night: 0.85 },
+    { material: shopGlass.material as THREE.Material, day: 0.3, night: 0.6 },
+  );
 }
 
-function lighting(root: THREE.Group): void {
-  // Sky above, street-glow below: a hemisphere light does in one object what
-  // separate ambient and bounce lights would, and it is the difference between
-  // facades that read as vertical and facades that read as flat.
-  root.add(new THREE.HemisphereLight(0xaac6de, 0x171d24, 1.9));
+/* --------------------------------------------------------- street dressing */
 
-  const moon = new THREE.DirectionalLight(0xcfe2f5, 1.5);
-  moon.position.set(-400, 600, -300);
-  root.add(moon);
+/** Half the carriageway. Everything on a street is placed relative to this. */
+const ROAD_HALF = 11;
 
-  // A cool fill from the opposite side keeps the shadowed sides off black.
-  const fill = new THREE.DirectionalLight(0x35e0c8, 0.45);
-  fill.position.set(600, 300, 500);
-  root.add(fill);
+/**
+ * The things that make a road a street.
+ *
+ * A carriageway on bare ground is a runway. Pavements give it edges, crossings
+ * give it junctions, and lamps, trees and parked cars give it the one thing a
+ * procedural city is always missing — evidence that somebody uses it.
+ *
+ * All of it is instanced and laid out along the same walkable graph the
+ * simulation navigates, so the dressing agrees with the map by construction
+ * rather than by being placed to match it.
+ */
+function addStreetDressing(
+  root: THREE.Group,
+  state: GameState,
+  lit: LitSurface[],
+  rng: () => number,
+): void {
+  const graph = state.city.graph;
+  const dummy = new THREE.Object3D();
+  const tint = new THREE.Color();
+
+  const pool = (geometry: THREE.BufferGeometry, material: THREE.Material, capacity: number) => {
+    const mesh = new THREE.InstancedMesh(geometry, material, capacity);
+    mesh.raycast = () => {}; // scenery is never a target
+    mesh.count = 0;
+    root.add(mesh);
+    return mesh;
+  };
+
+  const pavement = pool(
+    new THREE.BoxGeometry(1, 0.22, 1),
+    new THREE.MeshLambertMaterial({ color: PALETTE.kerb }),
+    400,
+  );
+  const stripes = pool(
+    new THREE.PlaneGeometry(1, 1),
+    new THREE.MeshLambertMaterial({ color: PALETTE.markings }),
+    3000,
+  );
+  const centreLine = pool(
+    new THREE.PlaneGeometry(1, 1),
+    new THREE.MeshLambertMaterial({ color: 0xd8b641 }),
+    600,
+  );
+  // Pools of light on the tarmac. Additive, so they brighten what is under them
+  // rather than painting over it, and the single biggest thing separating a
+  // lit street at night from a row of glowing dots in a void.
+  const pools = pool(
+    new THREE.CircleGeometry(9.5, 18),
+    new THREE.MeshBasicMaterial({
+      color: 0xffca7a,
+      transparent: true,
+      opacity: 0.16,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      fog: true,
+    }),
+    400,
+  );
+  const poles = pool(
+    new THREE.CylinderGeometry(0.12, 0.16, 7, 6),
+    new THREE.MeshLambertMaterial({ color: 0x5b6166 }),
+    400,
+  );
+  const lamps = pool(
+    new THREE.SphereGeometry(0.42, 8, 6),
+    new THREE.MeshBasicMaterial({ color: 0xffd9a0, transparent: true, opacity: 0.4 }),
+    400,
+  );
+  const trunks = pool(
+    new THREE.CylinderGeometry(0.22, 0.3, 3.2, 6),
+    new THREE.MeshLambertMaterial({ color: 0x6b5544 }),
+    500,
+  );
+  const canopies = pool(
+    new THREE.IcosahedronGeometry(2.2, 0),
+    new THREE.MeshLambertMaterial({ color: 0x5c8a4a, flatShading: true }),
+    500,
+  );
+  const cars = pool(
+    new THREE.BoxGeometry(4.3, 1.25, 1.85),
+    new THREE.MeshLambertMaterial({ color: 0xffffff }),
+    600,
+  );
+  const cabins = pool(
+    new THREE.BoxGeometry(2.1, 0.85, 1.65),
+    new THREE.MeshLambertMaterial({ color: 0x1d2733 }),
+    600,
+  );
+
+  // Streetlights are the one piece of dressing the clock cares about.
+  lit.push(
+    { material: lamps.material as THREE.Material, day: 0.05, night: 0.95 },
+    { material: pools.material as THREE.Material, day: 0, night: 0.34 },
+  );
+
+  const place = (mesh: THREE.InstancedMesh, colour?: THREE.Color) => {
+    if (mesh.count >= mesh.instanceMatrix.count) return;
+    dummy.updateMatrix();
+    mesh.setMatrixAt(mesh.count, dummy.matrix);
+    if (colour) mesh.setColorAt(mesh.count, colour);
+    mesh.count++;
+  };
+
+  const drawn = new Set<string>();
+  for (const edge of graph.edges.values()) {
+    const a = graph.places.get(edge.a);
+    const b = graph.places.get(edge.b);
+    if (!a || !b || a.indoor || b.indoor) continue;
+    const key = [edge.a, edge.b].sort().join("|");
+    if (drawn.has(key)) continue;
+    drawn.add(key);
+
+    const dx = b.x - a.x;
+    const dz = b.y - a.y;
+    const length = Math.hypot(dx, dz);
+    if (length < 20) continue;
+    const heading = -Math.atan2(dz, dx);
+    // Along the street, and across it.
+    const ux = dx / length;
+    const uz = dz / length;
+    const px = -uz;
+    const pz = ux;
+
+    const at = (along: number, across: number) => ({
+      x: a.x + ux * along + px * across,
+      z: a.y + uz * along + pz * across,
+    });
+
+    // Pavements, both sides.
+    for (const side of [1, -1]) {
+      const p = at(length / 2, side * (ROAD_HALF + 3));
+      dummy.position.set(p.x, 0.11, p.z);
+      dummy.rotation.set(0, heading, 0);
+      dummy.scale.set(length, 1, 6);
+      place(pavement);
+    }
+    dummy.scale.setScalar(1);
+
+    // Crossings, set back from each junction.
+    for (const end of [16, length - 16]) {
+      for (let s = -3; s <= 3; s++) {
+        const p = at(end, s * 2.6);
+        dummy.position.set(p.x, 0.15, p.z);
+        dummy.rotation.set(-Math.PI / 2, 0, heading);
+        dummy.scale.set(1.1, 5.4, 1);
+        place(stripes);
+      }
+    }
+    dummy.scale.setScalar(1);
+
+    // Markings. A carriageway without them is a flat expanse under your feet
+    // with no sense of direction or scale, which is exactly how it read before:
+    // a double yellow down the middle, white dashes dividing the lanes.
+    for (const across of [-0.45, 0.45]) {
+      const p = at(length / 2, across);
+      dummy.position.set(p.x, 0.15, p.z);
+      dummy.rotation.set(-Math.PI / 2, 0, heading);
+      dummy.scale.set(length - 24, 0.28, 1);
+      place(centreLine);
+    }
+    for (const across of [-5.6, 5.6]) {
+      for (let along = 12; along < length - 12; along += 14) {
+        const p = at(along, across);
+        dummy.position.set(p.x, 0.15, p.z);
+        dummy.rotation.set(-Math.PI / 2, 0, heading);
+        dummy.scale.set(4.5, 0.3, 1);
+        place(stripes);
+      }
+    }
+    dummy.scale.setScalar(1);
+
+    // Lamps, alternating sides so the street lights evenly.
+    let flip = 1;
+    for (let along = 24; along < length - 18; along += 40) {
+      const side = (flip *= -1);
+      const p = at(along, side * (ROAD_HALF + 1.4));
+      dummy.rotation.set(0, 0, 0);
+      dummy.position.set(p.x, 3.5, p.z);
+      place(poles);
+      dummy.position.set(p.x, 7.1, p.z);
+      place(lamps);
+      // The pool sits under the lamp, on the road rather than the pavement.
+      dummy.position.set(p.x - px * side * 3, 0.13, p.z - pz * side * 3);
+      dummy.rotation.set(-Math.PI / 2, 0, 0);
+      place(pools);
+    }
+
+    // Trees, offset from the lamps so they do not stand in each other.
+    for (let along = 40; along < length - 24; along += 34) {
+      const side = rng() > 0.5 ? 1 : -1;
+      const p = at(along + rng() * 6, side * (ROAD_HALF + 4.2));
+      dummy.rotation.set(0, rng() * Math.PI, 0);
+      dummy.position.set(p.x, 1.6, p.z);
+      place(trunks);
+      dummy.position.set(p.x, 4.3 + rng() * 0.6, p.z);
+      dummy.scale.setScalar(0.85 + rng() * 0.45);
+      place(canopies);
+      dummy.scale.setScalar(1);
+    }
+
+    // Parked at the kerb, facing along the street, in colours a city has.
+    for (let along = 20; along < length - 20; along += 15 + rng() * 16) {
+      if (rng() > 0.62) continue;
+      const side = rng() > 0.5 ? 1 : -1;
+      const p = at(along, side * (ROAD_HALF - 2.4));
+      dummy.rotation.set(0, heading, 0);
+      dummy.position.set(p.x, 0.72, p.z);
+      tint.setHSL(rng(), 0.15 + rng() * 0.4, 0.28 + rng() * 0.42);
+      place(cars, tint);
+      dummy.position.set(p.x - ux * 0.4, 1.72, p.z - uz * 0.4);
+      place(cabins);
+    }
+  }
+
+  for (const mesh of [pavement, stripes, centreLine, pools, poles, lamps, trunks, canopies, cars, cabins]) {
+    mesh.instanceMatrix.needsUpdate = true;
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+  }
 }
 
 export function buildCity(state: GameState): CityMeshes {
@@ -395,13 +727,16 @@ export function buildCity(state: GameState): CityMeshes {
   ground.receiveShadow = true;
   root.add(ground);
 
+  const lit: LitSurface[] = [];
+
   for (const district of state.city.districts.values()) addDistrict(root, district);
   addRoads(root, state);
-  addInfill(root, state, colliders, rng);
+  addInfill(root, state, colliders, lit, rng);
+  addStreetDressing(root, state, lit, rng);
 
   const landmarks: CityMeshes["landmarks"] = [];
   for (const building of state.city.buildings.values()) {
-    addBuilding(root, building, colliders, rng);
+    addBuilding(root, building, colliders, lit, rng);
     landmarks.push({
       name: building.name,
       position: new THREE.Vector3(
@@ -411,9 +746,10 @@ export function buildCity(state: GameState): CityMeshes {
       ),
     });
   }
-  lighting(root);
 
-  return { root, colliders, landmarks };
+  // No lights here: `sky.ts` owns them, because what they should be doing
+  // depends entirely on what time the simulation says it is.
+  return { root, colliders, landmarks, lit };
 }
 
 /** Where a place sits in world space. */

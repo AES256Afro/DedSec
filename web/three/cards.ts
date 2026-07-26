@@ -22,6 +22,8 @@ import type { CrowdMember } from "./crowd.js";
 export const CARD_RANGE = 150;
 /** More than this on screen at once and it stops being readable. */
 const MAX_CARDS = 9;
+/** Cards never climb above this — the HUD lives up there. */
+const CARD_CEILING = 54;
 
 interface Slot {
   el: HTMLElement;
@@ -98,6 +100,10 @@ export class CardLayer {
       const remote = !optical.has(member.npc.id);
       const signature = this.signatureOf(state, member, focused, remote);
       if (slot.signature !== signature) {
+        // Unhide *before* measuring. A hidden element reports zero width, so
+        // measuring first told the stacker every newly-shown card was a point,
+        // and a busy plaza went back to a pile of overlapping cards.
+        slot.el.hidden = false;
         slot.el.innerHTML = this.render(state, member, focused, remote);
         slot.signature = signature;
         slot.width = slot.el.offsetWidth;
@@ -111,6 +117,10 @@ export class CardLayer {
       // hundred pixels. Nearest keeps its spot and everyone behind it stacks
       // upward, which is both readable and a correct depth cue.
       const lifted = this.lift(placed, x, y, slot.width * scale, slot.height * scale);
+      if (lifted === undefined) {
+        slot.el.hidden = true;
+        continue;
+      }
 
       slot.el.style.transform = `translate(-50%, -100%) translate(${x.toFixed(1)}px, ${lifted.toFixed(1)}px) scale(${scale.toFixed(3)})`;
       slot.el.style.opacity = String(focused ? 1 : Math.max(0.4, 1 - (distance / CARD_RANGE) * 0.7));
@@ -121,10 +131,18 @@ export class CardLayer {
     for (let i = shown.length; i < this.slots.length; i++) this.slots[i]!.el.hidden = true;
   }
 
-  /** Slide a card up until it clears everything already on screen. */
-  private lift(placed: Box[], x: number, y: number, width: number, height: number): number {
+  /**
+   * Slide a card up until it clears everything already on screen.
+   *
+   * Returns `undefined` when there is nowhere left for it. A crowded plaza can
+   * put twenty people in the same hundred pixels, and marching their cards up
+   * the screen forever walks them straight through the HUD and off the top —
+   * so past a point the right answer is to show fewer cards, not worse ones.
+   */
+  private lift(placed: Box[], x: number, y: number, width: number, height: number): number | undefined {
     let top = y;
     for (let attempt = 0; attempt < 12; attempt++) {
+      if (top - height < CARD_CEILING) return undefined;
       const box: Box = { x0: x - width / 2, y0: top - height, x1: x + width / 2, y1: top };
       const hit = placed.find((p) => box.x0 < p.x1 && box.x1 > p.x0 && box.y0 < p.y1 && box.y1 > p.y0);
       if (!hit) {
@@ -133,7 +151,7 @@ export class CardLayer {
       }
       top = hit.y0 - 6;
     }
-    return top;
+    return undefined;
   }
 
   private slot(i: number): Slot {

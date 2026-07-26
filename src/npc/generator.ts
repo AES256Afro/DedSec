@@ -173,7 +173,12 @@ function makeRoutine(
   const eveningPlace = leisurePlaceIds.length > 0 ? rng.pick(leisurePlaceIds) : homePlaceId;
   // Draw the handover once — drawing it twice leaves an unscheduled hole in the
   // evening, and a person with no block is a person who does not go anywhere.
-  const eveningEnd = (end + rng.int(70, 180)) % MINUTES_PER_DAY;
+  //
+  // A third of the city has a proper night out. Without this everybody was
+  // indoors by half nine and the city after dark — which is when it looks best
+  // and when the bar contract is set — had nobody in it at all.
+  const nightOut = rng.chance(0.34);
+  const eveningEnd = (end + (nightOut ? rng.int(240, 460) : rng.int(70, 180))) % MINUTES_PER_DAY;
   push({
     label: rng.pick(["Out", "Errands", "Meeting a friend", "Unwinding"]),
     window: { startMinute: end, endMinute: eveningEnd },
@@ -329,8 +334,14 @@ export function generatePopulation(city: City, seed: number | string): Populatio
   }
 
   // Unaffiliated residents to fill the streets out.
+  //
+  // Thirty was enough for a map with dots on it and nowhere near enough for a
+  // street you walk down: two-thirds of the city is indoors during office
+  // hours, so a population of seventy put four people on the pavement. These
+  // are the ones with somewhere to be that is not work — the ones who make a
+  // plaza look like a plaza.
   const residentArch = archetype("resident");
-  const residentCount = 30;
+  const residentCount = 150;
   for (let i = 0; i < residentCount; i++) create(residentArch, undefined, undefined);
 
   wireRelationships(npcs, rosters, rng);
